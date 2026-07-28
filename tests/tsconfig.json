@@ -1,0 +1,10 @@
+{
+  "compilerOptions": {
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "target": "esnext",
+    "paths": {
+      "@jungle-mode/*": ["../jungle-mode/*"]
+    }
+  }
+}
