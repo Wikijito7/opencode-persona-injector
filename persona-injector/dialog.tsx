@@ -18,6 +18,8 @@ export function openPersonaDialog(
   const fg = theme?.foreground ?? "#ffffff"
   const muted = theme?.muted ?? "#888888"
   const red = theme?.red ?? "#ef4444"
+  const primary = (theme as any)?.primary
+  const selectedText = (theme as any)?.selectedListItemText
 
   const [selectedIndex, setSelectedIndex] = createSignal(0)
   const [loading, setLoading] = createSignal(true)
@@ -27,15 +29,30 @@ export function openPersonaDialog(
 
   let cleanupKeyLayer: (() => void) | null = null
 
+  // Build list of selectable items (excludes template personas)
+  // Index 0 = "Disabled" (null persona), then non-template personas in order
+  function getSelectableItems(): { displayIndex: number; id: string | null }[] {
+    const items: { displayIndex: number; id: string | null }[] = []
+    items.push({ displayIndex: 0, id: null }) // "Disabled" row
+    const all = personas()
+    for (let i = 0; i < all.length; i++) {
+      if (!all[i].id.startsWith("_")) {
+        items.push({ displayIndex: i + 1, id: all[i].id }) // +1 because row 0 is Disabled
+      }
+    }
+    return items
+  }
+
   function loadData() {
     setLoading(false)
     setError(null)
-    const loaded = personas()
-    if (activeId()) {
-      const idx = loaded.findIndex(p => p.id === activeId())
-      setSelectedIndex(idx >= 0 ? idx + 1 : 0)  // +1 for "Disabled" row
+    const active = activeId()
+    if (active) {
+      const selectable = getSelectableItems()
+      const idx = selectable.findIndex(s => s.id === active)
+      setSelectedIndex(idx >= 0 ? idx : 0)
     } else {
-      setSelectedIndex(0)  // "Disabled" row
+      setSelectedIndex(0) // "Disabled" row
     }
   }
 
@@ -46,10 +63,8 @@ export function openPersonaDialog(
   }
 
   function getSelectedId(): string | null {
-    const idx = selectedIndex()
-    if (idx === 0) return null  // "Disabled" row
-    const p = personas()
-    return p[idx - 1]?.id ?? null
+    const selectable = getSelectableItems()
+    return selectable[selectedIndex()]?.id ?? null
   }
 
   function handleKey(key: string) {
@@ -62,7 +77,7 @@ export function openPersonaDialog(
       return true
     }
     if (key === "down" || key === "j") {
-      const max = personas().length  // 0 = Disabled, so max index = personas.length
+      const max = getSelectableItems().length - 1
       const current = selectedIndex()
       if (current < max) {
         setSelectedIndex(current + 1)
@@ -114,6 +129,10 @@ export function openPersonaDialog(
     // Static heuristic for overflow: more than 8 personas
     const hasOverflow = () => personas().length > 8
 
+    // Selectable items map selectable-index -> visual row index
+    const selectable = getSelectableItems()
+    const currentSelectable = selectable[selectedIndex()]
+
     return (
       <box paddingLeft={2} paddingRight={2} paddingBottom={1} flexDirection="column" gap={1}>
         {/* Title bar */}
@@ -146,24 +165,33 @@ export function openPersonaDialog(
             <text fg={muted}>No personas found in {PERSONAS_DIR}</text>
           ) : (
             <box paddingBottom={1}>
-              {/* Disabled row */}
-              <text fg={selectedIndex() === 0 ? fg : muted}>
-                {selectedIndex() === 0 ? "● " : "  "}
-                Disabled
-              </text>
+              {/* Disabled row (displayIndex 0) */}
+              {currentSelectable?.displayIndex === 0 ? (
+                <box paddingLeft={1} paddingRight={1} backgroundColor={primary}>
+                  <text fg={selectedText}>Disabled</text>
+                </box>
+              ) : (
+                <text fg={muted}>Disabled</text>
+              )}
 
               {/* Persona rows */}
               {personas().map((p, i) => {
+                const displayIndex = i + 1
+                const isSelected = currentSelectable?.displayIndex === displayIndex
                 const isActive = p.id === activeId()
-                const isSelected = selectedIndex() === i + 1
                 const isTemplate = p.id.startsWith("_")
                 const color = p.color
+                const suffix = (isActive ? ` (active)` : "") + (isTemplate ? ` [disabled]` : "")
+                if (isSelected) {
+                  return (
+                    <box paddingLeft={1} paddingRight={1} backgroundColor={primary}>
+                      <text fg={selectedText}>{p.displayName}{suffix}</text>
+                    </box>
+                  )
+                }
                 return (
-                  <text fg={isSelected ? fg : isTemplate ? muted : color}>
-                    {isSelected ? "● " : "  "}
-                    {p.displayName}
-                    {isActive ? ` (active)` : ""}
-                    {isTemplate ? ` [disabled]` : ""}
+                  <text fg={isTemplate ? muted : isActive ? color : muted}>
+                    {p.displayName}{suffix}
                   </text>
                 )
               })}
