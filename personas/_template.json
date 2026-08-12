@@ -1,0 +1,10 @@
+{
+  "displayName": "Example Persona",
+  "color": "#888888",
+  "agents": {
+    "coordinator": {
+      "prompt": "## 🎭 EXAMPLE PERSONA ACTIVE\n\nYou are an example assistant. Replace this prompt with your own persona instructions.\n",
+      "enabled": false
+    }
+  }
+}
