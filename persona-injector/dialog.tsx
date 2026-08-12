@@ -18,6 +18,7 @@ export function openPersonaDialog(
   const fg = theme?.foreground ?? "#ffffff"
   const muted = theme?.muted ?? "#888888"
   const red = theme?.red ?? "#ef4444"
+  const primary = theme?.primary ?? "#4f46e5"
   const selectedText = (theme as any)?.selectedListItemText
 
   const [selectedIndex, setSelectedIndex] = createSignal(0)
@@ -167,7 +168,9 @@ export function openPersonaDialog(
                 <box paddingBottom={1}>
                   {/* Disabled row (displayIndex 0) */}
                   {current?.displayIndex === 0 ? (
-                    <text fg={selectedText}>None</text>
+                    <box backgroundColor={primary}>
+                      <text fg={selectedText}>None</text>
+                    </box>
                   ) : (
                     <text fg={muted}>None</text>
                   )}
@@ -182,7 +185,9 @@ export function openPersonaDialog(
                     const suffix = (isActive ? ` (active)` : "") + (isTemplate ? ` [disabled]` : "")
                     if (isSelected) {
                       return (
-                        <text fg={selectedText}>{p.displayName}{suffix}</text>
+                        <box backgroundColor={primary}>
+                          <text fg={selectedText}>{p.displayName}{suffix}</text>
+                        </box>
                       )
                     }
                     return (
