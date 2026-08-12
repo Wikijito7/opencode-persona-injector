@@ -18,7 +18,6 @@ export function openPersonaDialog(
   const fg = theme?.foreground ?? "#ffffff"
   const muted = theme?.muted ?? "#888888"
   const red = theme?.red ?? "#ef4444"
-  const primary = (theme as any)?.primary
   const selectedText = (theme as any)?.selectedListItemText
 
   const [selectedIndex, setSelectedIndex] = createSignal(0)
@@ -59,7 +58,7 @@ export function openPersonaDialog(
   async function selectPersona(id: string | null) {
     await writeConfig({ persona: id })
     onPersonaChanged(id)
-    api.ui.toast({ message: id ? `Persona: ${id}` : "Persona disabled" })
+    api.ui.toast({ message: id ? `Persona: ${id}` : "Persona deactivated" })
   }
 
   function getSelectedId(): string | null {
@@ -168,11 +167,9 @@ export function openPersonaDialog(
                 <box paddingBottom={1}>
                   {/* Disabled row (displayIndex 0) */}
                   {current?.displayIndex === 0 ? (
-                    <box paddingLeft={1} paddingRight={1} backgroundColor={primary}>
-                      <text fg={selectedText}>Disabled</text>
-                    </box>
+                    <text fg={selectedText}>None</text>
                   ) : (
-                    <text fg={muted}>Disabled</text>
+                    <text fg={muted}>None</text>
                   )}
 
                   {/* Persona rows */}
@@ -185,13 +182,11 @@ export function openPersonaDialog(
                     const suffix = (isActive ? ` (active)` : "") + (isTemplate ? ` [disabled]` : "")
                     if (isSelected) {
                       return (
-                        <box paddingLeft={1} paddingRight={1} backgroundColor={primary}>
-                          <text fg={selectedText}>{p.displayName}{suffix}</text>
-                        </box>
+                        <text fg={selectedText}>{p.displayName}{suffix}</text>
                       )
                     }
                     return (
-                      <text fg={isTemplate ? muted : isActive ? color : muted}>
+                      <text fg={isActive ? color : muted}>
                         {p.displayName}{suffix}
                       </text>
                     )
