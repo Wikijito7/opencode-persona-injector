@@ -129,10 +129,6 @@ export function openPersonaDialog(
     // Static heuristic for overflow: more than 8 personas
     const hasOverflow = () => personas().length > 8
 
-    // Selectable items map selectable-index -> visual row index
-    const selectable = getSelectableItems()
-    const currentSelectable = selectable[selectedIndex()]
-
     return (
       <box paddingLeft={2} paddingRight={2} paddingBottom={1} flexDirection="column" gap={1}>
         {/* Title bar */}
@@ -164,38 +160,45 @@ export function openPersonaDialog(
           ) : personas().length === 0 ? (
             <text fg={muted}>No personas found in {PERSONAS_DIR}</text>
           ) : (
-            <box paddingBottom={1}>
-              {/* Disabled row (displayIndex 0) */}
-              {currentSelectable?.displayIndex === 0 ? (
-                <box paddingLeft={1} paddingRight={1} backgroundColor={primary}>
-                  <text fg={selectedText}>Disabled</text>
-                </box>
-              ) : (
-                <text fg={muted}>Disabled</text>
-              )}
-
-              {/* Persona rows */}
-              {personas().map((p, i) => {
-                const displayIndex = i + 1
-                const isSelected = currentSelectable?.displayIndex === displayIndex
-                const isActive = p.id === activeId()
-                const isTemplate = p.id.startsWith("_")
-                const color = p.color
-                const suffix = (isActive ? ` (active)` : "") + (isTemplate ? ` [disabled]` : "")
-                if (isSelected) {
-                  return (
+            (() => {
+              // Selectable items map selectable-index -> visual row index
+              const selectable = getSelectableItems()
+              const current = selectable[selectedIndex()]
+              return (
+                <box paddingBottom={1}>
+                  {/* Disabled row (displayIndex 0) */}
+                  {current?.displayIndex === 0 ? (
                     <box paddingLeft={1} paddingRight={1} backgroundColor={primary}>
-                      <text fg={selectedText}>{p.displayName}{suffix}</text>
+                      <text fg={selectedText}>Disabled</text>
                     </box>
-                  )
-                }
-                return (
-                  <text fg={isTemplate ? muted : isActive ? color : muted}>
-                    {p.displayName}{suffix}
-                  </text>
-                )
-              })}
-            </box>
+                  ) : (
+                    <text fg={muted}>Disabled</text>
+                  )}
+
+                  {/* Persona rows */}
+                  {personas().map((p, i) => {
+                    const displayIndex = i + 1
+                    const isSelected = current?.displayIndex === displayIndex
+                    const isActive = p.id === activeId()
+                    const isTemplate = p.id.startsWith("_")
+                    const color = p.color
+                    const suffix = (isActive ? ` (active)` : "") + (isTemplate ? ` [disabled]` : "")
+                    if (isSelected) {
+                      return (
+                        <box paddingLeft={1} paddingRight={1} backgroundColor={primary}>
+                          <text fg={selectedText}>{p.displayName}{suffix}</text>
+                        </box>
+                      )
+                    }
+                    return (
+                      <text fg={isTemplate ? muted : isActive ? color : muted}>
+                        {p.displayName}{suffix}
+                      </text>
+                    )
+                  })}
+                </box>
+              )
+            })()
           )}
         </scrollbox>
 
