@@ -78,8 +78,7 @@ persona-injector/
 │   ├── personas.ts                   # Persona loader & resolver
 │   ├── dialog.tsx                    # Persona selection dialog
 │   ├── prompt-indicator.tsx          # Active persona indicator
-│   └── shared/
-│       └── scroll.ts                 # Scroll state utility
+│   └── wlib/                         # opencode-wlib shared helpers (git submodule)
 ├── personas/
 │   ├── jungle-mode.json              # Default persona (jungle mode)
 │   └── _template.json                # Template (disabled)

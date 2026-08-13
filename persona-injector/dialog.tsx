@@ -3,7 +3,10 @@ import type { TuiPluginApi } from "@opencode-ai/plugin/tui"
 import { onMount, onCleanup, createSignal } from "solid-js"
 import { homedir } from "node:os"
 import { writeConfig } from "./config"
-import { makeScrollState } from "./shared/scroll"
+import { makeScrollState } from "./wlib/scroll"
+import { registerDialogKeyLayer } from "./wlib/keys"
+import { resolveThemeColors } from "./wlib/theme"
+import { DialogShell } from "./wlib/dialog"
 import type { PersonaMeta } from "./types"
 
 const PERSONAS_DIR = `${homedir()}/.config/opencode/personas`
@@ -14,12 +17,7 @@ export function openPersonaDialog(
   personas: () => PersonaMeta[],
   activeId: () => string | null,
 ) {
-  const theme = api.theme.current
-  const fg = theme?.foreground ?? "#ffffff"
-  const muted = theme?.muted ?? "#888888"
-  const red = theme?.red ?? "#ef4444"
-  const primary = theme?.primary ?? "#4f46e5"
-  const selectedText = (theme as any)?.selectedListItemText
+  const { fg, muted, red, primary, selectedText } = resolveThemeColors(api.theme.current)
 
   const [selectedIndex, setSelectedIndex] = createSignal(0)
   const [loading, setLoading] = createSignal(true)
@@ -97,9 +95,7 @@ export function openPersonaDialog(
 
   api.ui.dialog.replace(() => {
     onMount(() => {
-      api.ui.dialog.setSize("medium")
-
-      cleanupKeyLayer = api.keymap.registerLayer({
+      cleanupKeyLayer = registerDialogKeyLayer(api, {
         bindings: [
           { key: "up",      cmd: "persona.up",      desc: "Move up" },
           { key: "k",       cmd: "persona.up",      desc: "Move up" },
@@ -126,78 +122,69 @@ export function openPersonaDialog(
       }
     })
 
-    // Static heuristic for overflow: more than 8 personas
-    const hasOverflow = () => personas().length > 8
-
     return (
-      <box paddingLeft={2} paddingRight={2} paddingBottom={1} flexDirection="column" gap={1}>
-        {/* Title bar */}
-        <box flexDirection="row" justifyContent="space-between">
-          <box flexDirection="row" gap={1}>
-            <text fg={fg}><b>Persona Injector</b></text>
-            <text fg={muted}>— Select persona</text>
+      <DialogShell
+        api={api}
+        title="Persona Injector"
+        subtitle="— Select persona"
+        fg={fg}
+        muted={muted}
+        scroll={scroll}
+        footer={<text fg={muted}>↑↓/jk navigate  ·  enter select  ·  esc close</text>}
+        desired={{ size: "medium" }}
+        onSizeChange={(size) => api.ui.dialog.setSize(size)}
+      >
+        {loading() ? (
+          <text fg={muted}>Loading personas…</text>
+        ) : error() ? (
+          <box flexDirection="column" gap={1}>
+            <text fg={red}><b>Error</b></text>
+            <text fg={muted}>{error()}</text>
           </box>
-          <text fg={muted}>esc</text>
-        </box>
-
-        {/* More above indicator */}
-        <text fg={muted}>{hasOverflow() && scroll.isScrolled() ? "▲ more above" : " "}</text>
-
-        <scrollbox
-          ref={(el) => scroll.scrollRef = el}
-          flexDirection="column"
-          gap={1}
-          maxHeight={40}
-          scrollbarOptions={{ visible: false }}
-        >
-          {loading() ? (
-            <text fg={muted}>Loading personas…</text>
-          ) : error() ? (
-            <box flexDirection="column" gap={1}>
-              <text fg={red}><b>Error</b></text>
-              <text fg={muted}>{error()}</text>
-            </box>
-          ) : personas().length === 0 ? (
-            <text fg={muted}>No personas found in {PERSONAS_DIR}</text>
-          ) : (
-            (() => {
-              // Selectable items map selectable-index -> visual row index
-              const selectable = getSelectableItems()
-              const current = selectable[selectedIndex()]
-              return (
-                <box paddingBottom={1}>
-                  {/* Disabled row (displayIndex 0) */}
-                  <box paddingLeft={1} paddingRight={1} backgroundColor={current?.displayIndex === 0 ? primary : undefined}>
-                    <text fg={current?.displayIndex === 0 ? selectedText : muted}>None</text>
+        ) : personas().length === 0 ? (
+          <text fg={muted}>No personas found in {PERSONAS_DIR}</text>
+        ) : (
+          (() => {
+            // Selectable items map selectable-index -> visual row index
+            const selectable = getSelectableItems()
+            const current = selectable[selectedIndex()]
+            return (
+              <box paddingBottom={1}>
+                {/* Disabled row (displayIndex 0) */}
+                <box paddingLeft={1} paddingRight={1} backgroundColor={current?.displayIndex === 0 ? primary : undefined}>
+                  <box flexDirection="row" gap={1}>
+                    <text flexShrink={0} fg={activeId() === null ? (current?.displayIndex === 0 ? selectedText : primary) : muted}>
+                      {activeId() === null ? "●" : " "}
+                    </text>
+                    <text fg={current?.displayIndex === 0 ? selectedText : activeId() === null ? primary : muted}>None</text>
                   </box>
+                </box>
 
-                  {/* Persona rows */}
-                  {personas().map((p, i) => {
-                    const displayIndex = i + 1
-                    const isSelected = current?.displayIndex === displayIndex
-                    const isActive = p.id === activeId()
-                    const isTemplate = p.id.startsWith("_")
-                    const suffix = (isActive ? ` (active)` : "") + (isTemplate ? ` [disabled]` : "")
-                    return (
-                      <box paddingLeft={1} paddingRight={1} backgroundColor={isSelected ? primary : undefined}>
-                        <text fg={isSelected ? selectedText : isTemplate ? muted : isActive ? p.color : muted}>
+                {/* Persona rows */}
+                {personas().map((p, i) => {
+                  const displayIndex = i + 1
+                  const isSelected = current?.displayIndex === displayIndex
+                  const isActive = p.id === activeId()
+                  const isTemplate = p.id.startsWith("_")
+                  const suffix = isTemplate ? " [disabled]" : ""
+                  return (
+                    <box paddingLeft={1} paddingRight={1} backgroundColor={isSelected ? primary : undefined}>
+                      <box flexDirection="row" gap={1}>
+                        <text flexShrink={0} fg={isActive ? (isSelected ? selectedText : primary) : muted}>
+                          {isActive ? "●" : " "}
+                        </text>
+                        <text fg={isSelected ? selectedText : isTemplate ? muted : isActive ? primary : muted}>
                           {p.displayName}{suffix}
                         </text>
                       </box>
-                    )
-                  })}
-                </box>
-              )
-            })()
-          )}
-        </scrollbox>
-
-        {/* More below indicator */}
-        <text fg={muted}>{hasOverflow() && !scroll.isAtBottom() ? "▼ more below" : " "}</text>
-
-        {/* Footer */}
-        <text fg={muted}>↑↓/jk navigate  ·  enter select  ·  esc close</text>
-      </box>
+                    </box>
+                  )
+                })}
+              </box>
+            )
+          })()
+        )}
+      </DialogShell>
     )
   })
 }
