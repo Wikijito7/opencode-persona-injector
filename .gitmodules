@@ -1,0 +1,3 @@
+[submodule "persona-injector/wlib"]
+	path = persona-injector/wlib
+	url = https://github.com/Wikijito7/opencode-wlib
