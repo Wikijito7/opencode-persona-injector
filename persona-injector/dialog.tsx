@@ -59,7 +59,7 @@ export function openPersonaDialog(
   async function selectPersona(id: string | null) {
     await writeConfig({ persona: id })
     onPersonaChanged(id)
-    api.ui.toast({ message: id ? `Persona: ${id}` : "Persona deactivated" })
+    api.ui.toast({ message: id ? `${personas().find(p => p.id === id)?.displayName ?? id} enabled` : "Persona disabled" })
   }
 
   function getSelectedId(): string | null {
@@ -167,13 +167,9 @@ export function openPersonaDialog(
               return (
                 <box paddingBottom={1}>
                   {/* Disabled row (displayIndex 0) */}
-                  {current?.displayIndex === 0 ? (
-                    <box backgroundColor={primary}>
-                      <text fg={selectedText}>None</text>
-                    </box>
-                  ) : (
-                    <text fg={muted}>None</text>
-                  )}
+                  <box paddingLeft={1} paddingRight={1} backgroundColor={current?.displayIndex === 0 ? primary : undefined}>
+                    <text fg={current?.displayIndex === 0 ? selectedText : muted}>None</text>
+                  </box>
 
                   {/* Persona rows */}
                   {personas().map((p, i) => {
@@ -181,19 +177,13 @@ export function openPersonaDialog(
                     const isSelected = current?.displayIndex === displayIndex
                     const isActive = p.id === activeId()
                     const isTemplate = p.id.startsWith("_")
-                    const color = p.color
                     const suffix = (isActive ? ` (active)` : "") + (isTemplate ? ` [disabled]` : "")
-                    if (isSelected) {
-                      return (
-                        <box backgroundColor={primary}>
-                          <text fg={selectedText}>{p.displayName}{suffix}</text>
-                        </box>
-                      )
-                    }
                     return (
-                      <text fg={isActive ? color : muted}>
-                        {p.displayName}{suffix}
-                      </text>
+                      <box paddingLeft={1} paddingRight={1} backgroundColor={isSelected ? primary : undefined}>
+                        <text fg={isSelected ? selectedText : isTemplate ? muted : isActive ? p.color : muted}>
+                          {p.displayName}{suffix}
+                        </text>
+                      </box>
                     )
                   })}
                 </box>
