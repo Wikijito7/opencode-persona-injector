@@ -6,6 +6,7 @@ import { PersonaPromptIndicator } from "./persona-injector/prompt-indicator"
 import { openPersonaDialog } from "./persona-injector/dialog"
 import { readConfig } from "./persona-injector/config"
 import { loadPersonas } from "./persona-injector/personas"
+import { registerSlashCommand } from "./persona-injector/wlib/command"
 import type { PersonaMeta } from "./persona-injector/types"
 
 const PERSONAS_DIR = `${homedir()}/.config/opencode/personas`
@@ -54,29 +55,16 @@ const tui: TuiPlugin = async (api) => {
   })
 
   // Register persona command + keybinding
-  api.keymap.registerLayer({
-    commands: [
-      {
-        name: "persona.select",
-        title: "Select Persona",
-        category: "Plugin",
-        namespace: "palette",
-        slashName: "persona",
-        async run() {
-          // Re-read personas every time the dialog opens
-          const fresh = await loadPersonas(PERSONAS_DIR)
-          setPersonas(fresh)
-          openPersonaDialog(api, onPersonaChanged, personas, activeId)
-        },
-      },
-    ],
-    bindings: [
-      {
-        key: "ctrl+shift+m",
-        cmd: "persona.select",
-        desc: "Select Persona",
-      },
-    ],
+  registerSlashCommand(api, {
+    name: "persona.select",
+    title: "Select Persona",
+    slashName: "persona",
+    key: "ctrl+shift+m",
+    async run() {
+      const fresh = await loadPersonas(PERSONAS_DIR)
+      setPersonas(fresh)
+      openPersonaDialog(api, onPersonaChanged, personas, activeId)
+    },
   })
 }
 

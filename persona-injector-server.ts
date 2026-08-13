@@ -2,24 +2,15 @@ import { homedir } from "node:os"
 import { readConfig } from "./persona-injector/config"
 import { loadPersonas, resolvePersonaPrompt } from "./persona-injector/personas"
 import type { PersonaMeta } from "./persona-injector/types"
-import { mkdirSync, appendFileSync } from "node:fs"
 import { fileURLToPath } from "node:url"
+import { createLog } from "./persona-injector/wlib/log"
 import { writeSystemSnapshot, isTitleGenerator } from "./persona-injector/wlib/system"
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url))
-const DEBUG = false
 const LOG_DIR = `${__dirname}logs`
-const LOG_FILE = `${LOG_DIR}/persona-injector.log`
 
-if (DEBUG) {
-  try { mkdirSync(LOG_DIR, { recursive: true }) } catch {}
-}
-
-function log(...args: unknown[]) {
-  if (!DEBUG) return
-  const line = `[${new Date().toISOString()}] ${args.map(String).join(" ")}\n`
-  try { appendFileSync(LOG_FILE, line) } catch {}
-}
+const logger = createLog({ dir: LOG_DIR, fileName: "persona-injector.log" })
+const log = logger.log
 
 function snap(label: string, system: string[] | undefined) {
   const text = (system ?? []).join("\n")
@@ -71,8 +62,8 @@ export async function loadPersonaPrompts(
  * - Coordinator: the system contains "Lead Coordinator Agent"
  * - Plan/Build:   the system starts with "You are opencode" (the standard
  *                 OpenCode preamble) but has NO "Lead Coordinator Agent"
- * - Subagents:    none of the above — return undefined so we don't inject
- *                 a primary-agent persona into subagent calls
+ * - Subagents:    none of the above — return undefined; subagents are
+ *                 resolved via the sessionAgent bridge, not content detection
  */
 export function detectPrimaryAgent(system: string[]): string | undefined {
   const text = system.join("\n")
@@ -117,16 +108,8 @@ export const PersonaInjectorPlugin = async () => {
         // 4. Determine agent: sessionAgent bridge first, then content detection fallback
         let agent: string | undefined
         if (_input.sessionID) {
-          const bridgedAgent = sessionAgent.get(_input.sessionID)
-          // Primary agents get injected here; subagents handled by chat.message
-          if (bridgedAgent === "coordinator" || bridgedAgent === "plan" || bridgedAgent === "build") {
-            agent = bridgedAgent
-          } else if (bridgedAgent) {
-            // Subagent — already injected via chat.message, skip
-            log("system.transform — bridgedAgent:", bridgedAgent, "resolved agent:", agent)
-            return
-          }
-          log("system.transform — bridgedAgent:", bridgedAgent, "resolved agent:", agent)
+          agent = sessionAgent.get(_input.sessionID)
+          log("system.transform — bridgedAgent:", agent)
         }
         if (!agent) {
           agent = detectPrimaryAgent(output.system)
@@ -171,35 +154,19 @@ export const PersonaInjectorPlugin = async () => {
       output: { message: any; parts: any[] },
     ) => {
       try {
-        log("chat.message FIRED — sessionID:", input.sessionID, "agent:", output.message?.agent, "parts:", output.parts?.length)
+        log("chat.message FIRED — sessionID:", input.sessionID, "agent:", input.agent, "parts:", output.parts?.length)
 
-        // Record agent for ALL agent types (primary AND subagent)
-        const agent = output.message?.agent?.toLowerCase()
+        // Record the agent for ALL agent types (primary AND subagent) into the
+        // sessionAgent bridge. opencode passes the agent explicitly on
+        // `input.agent` (the subagent name from the Task tool); `output.message.agent`
+        // is NOT reliably populated for subagents, which is why we read input.agent.
+        const agent = input.agent?.toLowerCase()
         if (!agent) return
         log("chat.message — agent resolved:", agent)
 
-        // Store in sessionAgent bridge for ALL agents
+        // Store in the bridge only — system.transform injects the persona into
+        // the system prompt for every agent type. No message mutation.
         sessionAgent.set(input.sessionID, agent)
-
-        // Primary agents get injected via system.transform — no message mutation
-        if (agent === "coordinator" || agent === "plan" || agent === "build") return
-
-        // Subagents: prepend persona to message text (battle-tested approach)
-        const config = await readConfig()
-        const personaId = config.persona
-        if (!personaId) return
-
-        const prompts = await loadPersonaPrompts(personaId)
-        const persona = prompts.get(agent)
-        log("chat.message — subagent injection for:", agent, "personaId:", personaId, "prompt found:", !!persona)
-        if (!persona) return
-
-        const part = output.parts.find((p: any) => p.type === "text" && !p.synthetic)
-        if (part) {
-          log("chat.message — part.text BEFORE (first 150):", part.text.slice(0, 150))
-          part.text = persona + part.text
-          log("chat.message — part.text AFTER (first 200):", part.text.slice(0, 200))
-        }
       } catch (err) {
         log("ERROR in chat.message:", err instanceof Error ? err.message : String(err))
       }
