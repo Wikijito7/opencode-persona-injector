@@ -6,7 +6,7 @@ import { mkdirSync, appendFileSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url))
-const DEBUG = true // always on for now
+const DEBUG = false
 const LOG_DIR = `${__dirname}logs`
 const LOG_FILE = `${LOG_DIR}/persona-injector.log`
 
