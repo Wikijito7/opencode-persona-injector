@@ -103,6 +103,8 @@ export async function loadPersonas(dir: string): Promise<PersonaMeta[]> {
  *
  * Returns `null` when the agent is not listed, when it is disabled, or when
  * the persona is a template (auto-disabled by convention).
+ *
+ * The returned prompt has trailing whitespace trimmed for clean injection.
  */
 export function resolvePersonaPrompt(
   personaMeta: PersonaMeta,
@@ -115,7 +117,7 @@ export function resolvePersonaPrompt(
   if (personaMeta.id.startsWith("_")) return null
   if (config.enabled === false) return null
 
-  return config.prompt
+  return config.prompt.trimEnd()
 }
 
 /**

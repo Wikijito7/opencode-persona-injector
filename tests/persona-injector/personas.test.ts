@@ -231,6 +231,16 @@ describe("resolvePersonaPrompt", () => {
     }
     expect(resolvePersonaPrompt(persona, "developer")).toBeNull()
   })
+
+  it("trims trailing whitespace from the prompt", () => {
+    const persona = {
+      id: "hero",
+      displayName: "Hero",
+      color: "#22c55e",
+      agents: { developer: { prompt: "Be a hero\n\n  ", enabled: true } },
+    }
+    expect(resolvePersonaPrompt(persona, "developer")).toBe("Be a hero")
+  })
 })
 
 describe("resolvePersonaColor", () => {
