@@ -4,6 +4,7 @@ import { loadPersonas, resolvePersonaPrompt } from "./persona-injector/personas"
 import type { PersonaMeta } from "./persona-injector/types"
 import { mkdirSync, appendFileSync } from "node:fs"
 import { fileURLToPath } from "node:url"
+import { writeSystemSnapshot, isTitleGenerator } from "./persona-injector/wlib/system"
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url))
 const DEBUG = false
@@ -18,6 +19,12 @@ function log(...args: unknown[]) {
   if (!DEBUG) return
   const line = `[${new Date().toISOString()}] ${args.map(String).join(" ")}\n`
   try { appendFileSync(LOG_FILE, line) } catch {}
+}
+
+function snap(label: string, system: string[] | undefined) {
+  const text = (system ?? []).join("\n")
+  const preview = text.length > 400 ? text.slice(0, 400) + "…<TRUNCATED>" : text
+  log(`SNAPSHOT[${label}] len=${text.length}:\n${preview}`)
 }
 
 const PERSONAS_DIR = `${homedir()}/.config/opencode/personas`
@@ -84,21 +91,28 @@ export const PersonaInjectorPlugin = async () => {
       _input: { sessionID?: string; model: any },
       output: { system: string[] },
     ) => {
+      const isTitleGen = isTitleGenerator(output.system)
+
       try {
         log("system.transform FIRED — sessionID:", _input.sessionID, "system length:", output.system?.length)
+        snap("system.transform BEFORE", output.system)
 
         // 1. Resolve active persona from config (with legacy migration fallback)
         const config = await readConfig()
         const personaId = config.persona
         log("readConfig — result:", JSON.stringify(config))
         log("system.transform — personaId:", personaId)
+        log("system.transform — model:", JSON.stringify(_input.model))
         if (!personaId) return
 
         // 2. Skip title generator
-        if (output.system.join("\n").includes("You are a title generator")) return
+        log("system.transform — isTitleGenerator:", isTitleGen)
+        if (isTitleGen) return
 
         // 3. Bail if MARKER already present (per-call duplicate guard)
-        if (output.system.join("\n").includes(MARKER)) return
+        const alreadyInjected = output.system.join("\n").includes(MARKER)
+        log("system.transform — markerAlreadyPresent:", alreadyInjected)
+        if (alreadyInjected) return
 
         // 4. Determine agent: sessionAgent bridge first, then content detection fallback
         let agent: string | undefined
@@ -124,6 +138,7 @@ export const PersonaInjectorPlugin = async () => {
         const prompt = prompts.get(agent)
         log("system.transform — prompt found for:", agent, !!prompt)
         if (!prompt) return
+        log("system.transform — prompt preview:", prompt.slice(0, 200))
 
         // 6. Prepend MARKER + prompt to system[0], guarding against an empty array
         if (output.system.length === 0) {
@@ -132,8 +147,16 @@ export const PersonaInjectorPlugin = async () => {
           output.system[0] = MARKER + "\n" + prompt + "\n\n" + output.system[0]
         }
         log("system.transform — injected MARKER for:", agent)
+        snap("system.transform AFTER", output.system)
       } catch (err) {
         log("ERROR in system.transform:", err instanceof Error ? err.message : String(err))
+      } finally {
+        // Persist the final system prompt (after injection, or the un-injected
+        // truth when nothing was injected) so model-usage can read it.
+        // Skipped for title-generator calls.
+        if (!isTitleGen && _input.sessionID) {
+          await writeSystemSnapshot(_input.sessionID, output.system.join("\n"))
+        }
       }
     },
 
@@ -173,7 +196,9 @@ export const PersonaInjectorPlugin = async () => {
 
         const part = output.parts.find((p: any) => p.type === "text" && !p.synthetic)
         if (part) {
+          log("chat.message — part.text BEFORE (first 150):", part.text.slice(0, 150))
           part.text = persona + part.text
+          log("chat.message — part.text AFTER (first 200):", part.text.slice(0, 200))
         }
       } catch (err) {
         log("ERROR in chat.message:", err instanceof Error ? err.message : String(err))
