@@ -47,7 +47,7 @@ description: "CRITICAL: Load when touching entry points, hooks, commands, or dia
 ## Dialog rules (MUST)
 
 - Open via `api.ui.dialog.replace` + `registerDialogKeyLayer` + `makeScrollState` from wlib — never hand-roll key layers or scroll state.
-- Sizing: `DialogShell` `desired={{ size: "medium" }}` + `onSizeChange={(size) => api.ui.dialog.setSize(size)}`.
+- Sizing: pass the desired size/height via `useDialogSizing(api, { size, maxHeight })` (or `<DialogShell desired={{ size, maxHeight }}>`); hardcoding a fixed height or `setSize` only sets the width tier — height is the scrollbox `maxHeight`. With `DialogShell`, wire `onSizeChange={(size) => api.ui.dialog.setSize(size)}` so the host dialog width stays in sync reactively.
 - Colors: `resolveThemeColors(api.theme.current)` — values are RGBA objects, pass them through (never string-coerce).
 - Row layout: index 0 is always the **"Disabled"** (null persona) row; `_`-prefixed (template) personas are rendered as `[disabled]` and never selectable.
 - Select writes config (`writeConfig({ persona: id })`) then notifies via the `onPersonaChanged` callback — the dialog does not touch global state.
@@ -59,11 +59,10 @@ description: "CRITICAL: Load when touching entry points, hooks, commands, or dia
 
 ## Deployment (verify after changes)
 
-```bash
-cp persona-injector-server.ts persona-injector.tsx ~/.config/opencode/plugins/
-cp -r persona-injector/ ~/.config/opencode/plugins/persona-injector/   # ships wlib/
-cp -r personas/ ~/.config/opencode/personas/
-```
+Sync to the live plugins folder using the `deploy` skill (cp entry points + rsync mirror with exclusions + runtime-artifact preservation). Do NOT use raw `cp -r` — it ships test files and can clobber runtime artifacts.
+
+- `cp` the entry points: `persona-injector.tsx` and `persona-injector-server.ts` → `~/.config/opencode/plugins/`.
+- rsync-mirror the source tree: `persona-injector/` → `~/.config/opencode/plugins/persona-injector/` (ships `wlib/`; excludes `*.test.ts`, `.git`, `.agents`, etc.; preserves runtime artifacts).
 
 - Restart opencode to load changes (plugins load at startup).
 - Register `./plugins/persona-injector.tsx` in `~/.config/opencode/tui.json`.
