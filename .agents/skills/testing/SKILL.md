@@ -37,6 +37,7 @@ bun test
 - Use `describe` / `it` / `expect` (+ `spyOn`, `afterEach`) from `bun:test`.
 - Import via the `@persona-injector/*` alias (e.g. `@persona-injector/personas`), configured in `tests/tsconfig.json`.
 - Test **pure functions only** — `config.ts` and `personas.ts` are designed for this (no TUI imports). If a module can't be tested purely, it belongs in `architecture`'s crosshairs, not in a workaround.
+- **Scroll-like UI elements**: fake the element (`scrollBy`, `scrollHeight`, `clientHeight`, `scrollTop`) instead of importing DOM — do not pull `@opentui/solid` into unit tests.
 - **Filesystem**: `mkdtempSync(join(tmpdir(), "…"))` + cleanup in `afterEach` (see `personas.test.ts` `createdDirs` pattern) — never write to repo paths.
 - **Config tests**: exercise the read precedence — new config wins, explicit `null` persona disables, malformed/missing file falls back to legacy `jungle-mode.json`, legacy `enabled: true` maps to `"jungle-mode"`.
 - **Personas tests**: cover default color (`#22c55e`), default `enabled`, `_` template auto-disable, `enabled: false` resolution, invalid-shape skipping, and `trimEnd` trimming.
