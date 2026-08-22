@@ -3,8 +3,8 @@ import { readConfig } from "./persona-injector/config"
 import { loadPersonas, resolvePersonaPrompt } from "./persona-injector/personas"
 import type { PersonaMeta } from "./persona-injector/types"
 import { fileURLToPath } from "node:url"
-import { createLog } from "./persona-injector/wlib/log"
-import { writeSystemSnapshot, isTitleGenerator } from "./persona-injector/wlib/system"
+import { createLog } from "./persona-injector/wlib/src/core/log"
+import { writeSystemSnapshot, isTitleGenerator } from "./persona-injector/wlib/src/core/system"
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url))
 const LOG_DIR = `${__dirname}logs`

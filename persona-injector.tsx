@@ -6,7 +6,7 @@ import { PersonaPromptIndicator } from "./persona-injector/prompt-indicator"
 import { openPersonaDialog } from "./persona-injector/dialog"
 import { readConfig } from "./persona-injector/config"
 import { loadPersonas } from "./persona-injector/personas"
-import { registerSlashCommand } from "./persona-injector/wlib/command"
+import { registerSlashCommand } from "./persona-injector/wlib/src/core/command"
 import type { PersonaMeta } from "./persona-injector/types"
 
 const PERSONAS_DIR = `${homedir()}/.config/opencode/personas`
