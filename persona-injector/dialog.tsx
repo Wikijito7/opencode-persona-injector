@@ -8,6 +8,7 @@ import { registerDialogKeyLayer } from "./wlib/keys"
 import { resolveThemeColors } from "./wlib/theme"
 import { DialogShell } from "./wlib/dialog"
 import type { PersonaMeta } from "./types"
+import { personaDialogMaxHeight } from "./persona-dialog-fit"
 
 const PERSONAS_DIR = `${homedir()}/.config/opencode/personas`
 
@@ -66,7 +67,7 @@ export function openPersonaDialog(
   }
 
   function handleKey(key: string) {
-    if (key === "up" || key === "k") {
+    if (key === "up") {
       const current = selectedIndex()
       if (current > 0) {
         setSelectedIndex(current - 1)
@@ -74,7 +75,7 @@ export function openPersonaDialog(
       }
       return true
     }
-    if (key === "down" || key === "j") {
+    if (key === "down") {
       const max = getSelectableItems().length - 1
       const current = selectedIndex()
       if (current < max) {
@@ -94,13 +95,12 @@ export function openPersonaDialog(
   }
 
   api.ui.dialog.replace(() => {
+    const dialogMaxHeight = personaDialogMaxHeight(personas().length)
     onMount(() => {
       cleanupKeyLayer = registerDialogKeyLayer(api, {
         bindings: [
           { key: "up",      cmd: "persona.up",      desc: "Move up" },
-          { key: "k",       cmd: "persona.up",      desc: "Move up" },
           { key: "down",    cmd: "persona.down",    desc: "Move down" },
-          { key: "j",       cmd: "persona.down",    desc: "Move down" },
           { key: "enter",   cmd: "persona.select",  desc: "Select" },
           { key: "escape",  cmd: "persona.close",   desc: "Close" },
         ],
@@ -130,8 +130,8 @@ export function openPersonaDialog(
         fg={fg}
         muted={muted}
         scroll={scroll}
-        footer={<text fg={muted}>↑↓/jk navigate  ·  enter select  ·  esc close</text>}
-        desired={{ size: "medium" }}
+        footer={<text fg={muted}>↑↓ navigate · enter select · esc close</text>}
+        desired={{ size: "medium", maxHeight: dialogMaxHeight }}
         onSizeChange={(size) => api.ui.dialog.setSize(size)}
       >
         {loading() ? (
