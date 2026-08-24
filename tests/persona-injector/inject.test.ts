@@ -18,6 +18,21 @@ describe("detectPrimaryAgent", () => {
     expect(detectPrimaryAgent(system)).toBe("plan")
   })
 
+  it("returns 'plan' for modern OpenCode capitalized preambles", () => {
+    const system = [
+      "You are OpenCode, the best coding agent on the planet.",
+      "You are an interactive CLI tool that helps users with software engineering tasks.",
+    ]
+    expect(detectPrimaryAgent(system)).toBe("plan")
+  })
+
+  it("returns 'plan' for 'You are opencode, an interactive CLI agent'", () => {
+    const system = [
+      "You are opencode, an interactive CLI agent specializing in software engineering tasks.",
+    ]
+    expect(detectPrimaryAgent(system)).toBe("plan")
+  })
+
   it("gives coordinator priority when both coordinator and opencode preamble are present", () => {
     const system = [
       "You are opencode, an interactive CLI tool.",

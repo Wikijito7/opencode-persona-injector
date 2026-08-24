@@ -68,7 +68,7 @@ export async function loadPersonaPrompts(
 export function detectPrimaryAgent(system: string[]): string | undefined {
   const text = system.join("\n")
   if (text.includes("Lead Coordinator Agent")) return "coordinator"
-  if (text.startsWith("You are opencode, an interactive CLI tool")) return "plan"
+  if (/^You are (OpenCode|opencode)\b/i.test(text.trimStart())) return "plan"
   return undefined
 }
 
@@ -123,11 +123,11 @@ export const PersonaInjectorPlugin = async () => {
         if (!prompt) return
         log("system.transform — prompt preview:", prompt.slice(0, 200))
 
-        // 6. Prepend MARKER + prompt to system[0], guarding against an empty array
+        // 6. Prepend MARKER + prompt + separator to system[0], guarding against an empty array
         if (output.system.length === 0) {
-          output.system.push(MARKER + "\n" + prompt)
+          output.system.push(MARKER + "\n" + prompt + "\n\n---")
         } else {
-          output.system[0] = MARKER + "\n" + prompt + "\n\n" + output.system[0]
+          output.system[0] = MARKER + "\n" + prompt + "\n\n---\n\n" + output.system[0]
         }
         log("system.transform — injected MARKER for:", agent)
         snap("system.transform AFTER", output.system)
