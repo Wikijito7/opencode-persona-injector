@@ -7,7 +7,8 @@
  *
  * Behaviour (parity with the v1 `system.transform` pipeline):
  * - persona JSON compatibility + legacy migration (via injected `readConfig`)
- * - title-generator exclusion (`isTitleGenerator`, from wlib)
+ * - title-generator exclusion (`isTitleGenerator`, from wlib), failing closed:
+ *   an indeterminate predicate skips injection AND snapshot
  * - marker protection + per-call duplicate guard (`PERSONA_MARKER`)
  * - primary/subagent routing (event `agent` first; `detectPrimaryAgent` fallback
  *   only for a genuinely primary agent — never for an unknown subagent id)
@@ -59,6 +60,24 @@ export interface PersonaInjectionDeps {
 
 const systemText = (system: PersonaSystemPart[]): string => system.map((part) => part.text).join("\n")
 
+/** Best-effort error message that never throws, so logging can't reject a hook. */
+const errorMessage = (err: unknown): string => {
+  try {
+    return err instanceof Error ? err.message : String(err)
+  } catch {
+    return "<unprintable error>"
+  }
+}
+
+/** Best-effort description of an arbitrary value that never throws. */
+const describeValue = (value: unknown): string => {
+  try {
+    return typeof value === "string" ? value : String(value)
+  } catch {
+    return `<unprintable ${typeof value}>`
+  }
+}
+
 /**
  * Inject the active persona into an event's system prompt.
  *
@@ -71,15 +90,23 @@ export async function injectPersona(
 ): Promise<boolean> {
   const log = deps.log ?? (() => {})
 
-  // A broken injected predicate (or a non-function value) must never reject the
-  // hook: treat an indeterminate result as "not a title generator" so the
-  // normal injection path is preserved.
-  let isTitleGen = false
+  // Fail closed: only an explicit boolean `false` proves this is NOT a
+  // title-generation call. `true` skips injection; a non-boolean result, a
+  // thrown predicate, or a non-function value all leave us unable to prove
+  // safety, so they abort the whole pipeline — no injection, no snapshot — and
+  // never reject the hook.
+  let isTitleGen: boolean
   try {
-    isTitleGen = (deps.isTitleGenerator ?? defaultIsTitleGenerator)(event.system.map((part) => part.text))
+    const result = (deps.isTitleGenerator ?? defaultIsTitleGenerator)(event.system.map((part) => part.text))
+    if (result === true || result === false) {
+      isTitleGen = result
+    } else {
+      log("ERROR in isTitleGenerator: non-boolean result, failing closed:", describeValue(result))
+      return false
+    }
   } catch (err) {
-    log("ERROR in isTitleGenerator:", err instanceof Error ? err.message : String(err))
-    isTitleGen = false
+    log("ERROR in isTitleGenerator:", errorMessage(err))
+    return false
   }
 
   try {
@@ -123,7 +150,7 @@ export async function injectPersona(
     log("injectPersona — injected MARKER for:", agent)
     return true
   } catch (err) {
-    log("ERROR in injectPersona:", err instanceof Error ? err.message : String(err))
+    log("ERROR in injectPersona:", errorMessage(err))
     return false
   } finally {
     // Persist the final system prompt for observers (model-usage). Skipped for
@@ -134,7 +161,7 @@ export async function injectPersona(
       try {
         await deps.writeSnapshot(event.sessionID, systemText(event.system))
       } catch (err) {
-        log("ERROR in writeSnapshot:", err instanceof Error ? err.message : String(err))
+        log("ERROR in writeSnapshot:", errorMessage(err))
       }
     }
   }

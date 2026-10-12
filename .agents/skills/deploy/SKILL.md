@@ -23,7 +23,7 @@ description: "CRITICAL: Load when syncing repo changes to the live opencode plug
 | **v1** (deprecated) | `persona-injector.tsx` + `persona-injector-server.ts` | `~/.config/opencode/plugins/` (files) |
 | **v1** (deprecated) | `persona-injector/` (shared modules) | `~/.config/opencode/plugins/persona-injector/` |
 
-**Never deploy both generations into the same `plugins/` folder.** OpenCode v2 *server* discovery loads bare `.ts`/`.js` files directly under `plugins/`; the deprecated `persona-injector-server.ts` is a v1 module and would be auto-loaded (and rejected) by v2. Pick one generation, deploy only its files, and remove the other generation's files from `plugins/`.
+**Never deploy both generations into the same `plugins/` folder.** OpenCode 2.0.27 *server* discovery scans both `plugin/` and `plugins/` and admits bare `.ts`/`.js` files directly under them; the deprecated `persona-injector-server.ts` is a v1 module and would be auto-loaded as a second, conflicting server plugin. Leaving it there is **not** harmless. Pick one generation, deploy only its files, and remove the other generation's files from `plugins/`.
 
 ## v2 layout
 
@@ -36,14 +36,24 @@ description: "CRITICAL: Load when syncing repo changes to the live opencode plug
 └── wlib/                        ← shared helpers (submodule), synced inside the package
 ```
 
-The v2 host auto-discovers any **directory** under `plugins/` and resolves `index` (server) + `tui` (TUI). No config file is required. Optionally declare it in `~/.config/opencode/cli.json`:
+The v2 *server* scanner discovers the directory under `plugin/` **or** `plugins/` and resolves `index` (server) + `tui` (TUI); the v2 *TUI* scanner discovers it under `plugins/` only. Placing the package under `plugins/` is therefore enough for both — no config file is required.
+
+Optionally declare it explicitly. Server config is `opencode.json(c)` under `plugins`; TUI-only config is `cli.json`:
 
 ```json
+// ~/.config/opencode/opencode.json — server
+{ "plugins": ["./plugins/persona-injector"] }
+```
+
+```json
+// ~/.config/opencode/cli.json — TUI
 {
   "$schema": "https://opencode.ai/v2/cli.json",
   "plugins": ["./plugins/persona-injector"]
 }
 ```
+
+A configured local path must be a **directory**; OpenCode 2.0.27 skips a configured path that points at a bare file.
 
 ## Rules (MUST)
 

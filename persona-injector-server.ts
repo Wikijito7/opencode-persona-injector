@@ -35,6 +35,24 @@ function snap(label: string, system: string[] | undefined) {
   log(`SNAPSHOT[${label}] len=${text.length}:\n${preview}`)
 }
 
+/** Best-effort error message that never throws, so logging can't reject the hook. */
+function errorMessage(err: unknown): string {
+  try {
+    return err instanceof Error ? err.message : String(err)
+  } catch {
+    return "<unprintable error>"
+  }
+}
+
+/** Best-effort description of an arbitrary value that never throws. */
+function describeValue(value: unknown): string {
+  try {
+    return typeof value === "string" ? value : String(value)
+  } catch {
+    return `<unprintable ${typeof value}>`
+  }
+}
+
 const PERSONAS_DIR = `${homedir()}/.config/opencode/personas`
 
 // Map<personaId, Map<agent, prompt>> — persona prompts cached after first load
@@ -80,7 +98,24 @@ export const PersonaInjectorPlugin = async () => {
       _input: { sessionID?: string; model: any },
       output: { system: string[] },
     ) => {
-      const isTitleGen = isTitleGenerator(output.system)
+      // Fail closed: only an explicit boolean `false` lets the pipeline
+      // continue. `true` skips injection; a thrown or non-boolean predicate is
+      // indeterminate, so we skip injection AND the snapshot rather than risk
+      // injecting a persona into a title-generation request. The hook never
+      // rejects, even when the predicate itself throws.
+      let isTitleGen: boolean
+      try {
+        const result = isTitleGenerator(output.system)
+        if (result === true || result === false) {
+          isTitleGen = result
+        } else {
+          log("ERROR in isTitleGenerator: non-boolean result, failing closed:", describeValue(result))
+          return
+        }
+      } catch (err) {
+        log("ERROR in isTitleGenerator:", errorMessage(err))
+        return
+      }
 
       try {
         log("system.transform FIRED — sessionID:", _input.sessionID, "system length:", output.system?.length)
@@ -130,13 +165,18 @@ export const PersonaInjectorPlugin = async () => {
         log("system.transform — injected MARKER for:", agent)
         snap("system.transform AFTER", output.system)
       } catch (err) {
-        log("ERROR in system.transform:", err instanceof Error ? err.message : String(err))
+        log("ERROR in system.transform:", errorMessage(err))
       } finally {
         // Persist the final system prompt (after injection, or the un-injected
         // truth when nothing was injected) so model-usage can read it.
-        // Skipped for title-generator calls.
+        // Skipped for title-generator calls, and never allowed to reject the
+        // hook on a broken writer.
         if (!isTitleGen && _input.sessionID) {
-          await writeSystemSnapshot(_input.sessionID, output.system.join("\n"))
+          try {
+            await writeSystemSnapshot(_input.sessionID, output.system.join("\n"))
+          } catch (err) {
+            log("ERROR in writeSystemSnapshot:", errorMessage(err))
+          }
         }
       }
     },
@@ -166,7 +206,10 @@ export const PersonaInjectorPlugin = async () => {
         // the system prompt for every agent type. No message mutation.
         sessionAgent.set(input.sessionID, agent)
       } catch (err) {
-        log("ERROR in chat.message:", err instanceof Error ? err.message : String(err))
+        // `errorMessage` never throws — a hostile thrown value (a proxy with a
+        // throwing `toString`, a cross-realm error, a revoked proxy) must not
+        // turn the logger itself into the failure.
+        log("ERROR in chat.message:", errorMessage(err))
       }
     },
   }

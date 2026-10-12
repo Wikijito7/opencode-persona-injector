@@ -10,6 +10,8 @@ import type { WlibHost } from "./wlib/src/host/types"
 import { onMount, onCleanup, createSignal } from "solid-js"
 import { homedir } from "node:os"
 import { writeConfig } from "./config"
+import { createPersonaSelectionPersister } from "./persona-selection"
+import { createDialogOwnership, persistAndCloseIfOwned, closeIfOwned } from "./dialog-ownership"
 import { makeScrollState } from "./wlib/src/core/scroll"
 import { registerDialogKeyLayer } from "./wlib/src/core/keys"
 import { DialogShell } from "./wlib/src/ui/dialog"
@@ -34,6 +36,19 @@ export function openPersonaDialog(
   const scroll = makeScrollState(createSignal)
 
   let cleanupKeyLayer: (() => void) | null = null
+
+  /**
+   * Ownership guard for the async Enter path.
+   *
+   * Persisting a selection is awaited, but the dialog can be dismissed
+   * (escape, backdrop click), replaced by another dialog, or disposed while
+   * that write is still in flight. Whichever happens first invalidates the
+   * token via the host `show`'s `onClose` callback (fired on dismiss AND on
+   * replacement) and via `onCleanup` (fired on disposal). A late write
+   * resolution therefore only closes the dialog it belongs to — it never
+   * clears a newer dialog that took its place.
+   */
+  const ownership = createDialogOwnership()
 
   // Build list of selectable items (excludes template personas)
   // Index 0 = "Disabled" (null persona), then non-template personas in order
@@ -62,10 +77,25 @@ export function openPersonaDialog(
     }
   }
 
-  async function selectPersona(id: string | null) {
-    await writeConfig({ persona: id })
-    onPersonaChanged(id)
-    notify(id ? `${personas().find((p) => p.id === id)?.displayName ?? id} enabled` : "Persona disabled")
+  /**
+   * Persist the selection and reflect it locally.
+   *
+   * The persister carries an in-flight guard: a second Enter while a write is
+   * pending is ignored outright (resolves `false`), so repeated keypresses
+   * cannot start concurrent writes or emit duplicate success/failure actions.
+   * Returns `true` only when the write succeeded — a rejected write keeps the
+   * dialog open (with the inline error) so the user can retry.
+   */
+  const persistSelection = createPersonaSelectionPersister({
+    write: writeConfig,
+    labelFor: (personaId) => personas().find((p) => p.id === personaId)?.displayName,
+    setError: (message) => setError(message),
+    notify,
+    onPersonaChanged,
+  })
+
+  async function selectPersona(id: string | null): Promise<boolean> {
+    return persistSelection(id)
   }
 
   function getSelectedId(): string | null {
@@ -73,7 +103,7 @@ export function openPersonaDialog(
     return selectable[selectedIndex()]?.id ?? null
   }
 
-  function handleKey(key: string) {
+  async function handleKey(key: string): Promise<boolean> {
     if (key === "up") {
       const current = selectedIndex()
       if (current > 0) {
@@ -93,14 +123,18 @@ export function openPersonaDialog(
       return true
     }
     if (key === "enter") {
+      // A stale Enter (queued before this dialog was dismissed/replaced) must
+      // neither start a write for a dead dialog nor close whatever is current.
+      // The ownership check after the await ensures a write that resolves after
+      // the dialog was dismissed or replaced does NOT clear the newer dialog.
       const id = getSelectedId()
-      selectPersona(id)
-      host.dialog.clear()
+      await persistAndCloseIfOwned(ownership, () => selectPersona(id), () => host.dialog.clear())
       return true
     }
     return false
   }
 
+  ownership.activate()
   host.dialog.show(() => {
     const dialogMaxHeight = personaDialogMaxHeight(personas().length)
     onMount(() => {
@@ -112,10 +146,10 @@ export function openPersonaDialog(
           { key: "escape",  cmd: "persona.close",   desc: "Close" },
         ],
         commands: [
-          { name: "persona.up",      title: "Move Up",   run: async () => { handleKey("up") } },
-          { name: "persona.down",    title: "Move Down", run: async () => { handleKey("down") } },
-          { name: "persona.select",  title: "Select",    run: async () => { handleKey("enter") } },
-          { name: "persona.close",   title: "Close",     run: async () => { host.dialog.clear() } },
+          { name: "persona.up",      title: "Move Up",   run: async () => { await handleKey("up") } },
+          { name: "persona.down",    title: "Move Down", run: async () => { await handleKey("down") } },
+          { name: "persona.select",  title: "Select",    run: async () => { await handleKey("enter") } },
+          { name: "persona.close",   title: "Close",     run: async () => { closeIfOwned(ownership, () => host.dialog.clear()) } },
         ],
       })
 
@@ -123,6 +157,10 @@ export function openPersonaDialog(
     })
 
     onCleanup(() => {
+      // Disposal is the host-agnostic invalidation: whether the dialog closed
+      // by escape/clear or was replaced, this component unmounts and any
+      // pending write must no longer be allowed to clear whatever is current.
+      ownership.invalidate()
       if (cleanupKeyLayer) {
         try { cleanupKeyLayer() } catch { /* ignore */ }
         cleanupKeyLayer = null
@@ -142,14 +180,12 @@ export function openPersonaDialog(
       >
         {loading() ? (
           <text fg={muted}>Loading personas…</text>
-        ) : error() ? (
-          <box flexDirection="column" gap={1}>
-            <text fg={red}><b>Error</b></text>
-            <text fg={muted}>{error()}</text>
-          </box>
-        ) : personas().length === 0 ? (
-          <text fg={muted}>No personas found in {PERSONAS_DIR}</text>
         ) : (
+          <box flexDirection="column" gap={1}>
+            {error() ? <text fg={red}>{error()}</text> : null}
+            {personas().length === 0 ? (
+              <text fg={muted}>No personas found in {PERSONAS_DIR}</text>
+            ) : (
           (() => {
             // Selectable items map selectable-index -> visual row index
             const selectable = getSelectableItems()
@@ -189,8 +225,10 @@ export function openPersonaDialog(
               </box>
             )
           })()
+            )}
+          </box>
         )}
       </DialogShell>
     )
-  })
+  }, () => ownership.invalidate())
 }

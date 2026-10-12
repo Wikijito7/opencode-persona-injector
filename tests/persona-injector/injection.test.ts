@@ -341,21 +341,121 @@ describe("injectPersona — snapshot behavior", () => {
   })
 })
 
-describe("injectPersona — resilient injected side effects", () => {
-  it("does not reject and still injects when isTitleGenerator throws", async () => {
-    const { deps } = makeDeps({
+describe("injectPersona — title-generator predicate failure (fails closed)", () => {
+  it("fails closed when isTitleGenerator throws: no injection, no snapshot, hook never rejects", async () => {
+    // A predicate that throws leaves us unable to prove this is NOT a
+    // title-generation call. Injecting would be worse than skipping, so the
+    // whole pipeline aborts before any side effect — and the hook still
+    // resolves (never rejects) so the host is unaffected.
+    let readConfigCalls = 0
+    const { deps, snapshotCalls } = makeDeps({
+      readConfig: async () => {
+        readConfigCalls += 1
+        return { persona: "hero" }
+      },
       isTitleGenerator: () => {
         throw new Error("predicate boom")
       },
     })
+    const event = makeEvent({ sessionID: "session-predicate-boom" })
+
+    const injected = await injectPersona(event, deps)
+
+    expect(injected).toBe(false)
+    expect(event.system).toHaveLength(1)
+    expect(event.system[0].text).toBe("BASE SYSTEM")
+    expect(snapshotCalls).toEqual([])
+    // Aborts before resolving the persona — no config read at all.
+    expect(readConfigCalls).toBe(0)
+  })
+
+  it("fails closed for a non-function predicate (defensive)", async () => {
+    // A broken injection (non-function value) throws on invocation and must be
+    // treated the same as a throwing predicate: abort, never reject the hook.
+    const { deps, snapshotCalls } = makeDeps({
+      isTitleGenerator: 42 as unknown as (system: string[]) => boolean,
+    })
+    const event = makeEvent({ sessionID: "session-non-function" })
+
+    const injected = await injectPersona(event, deps)
+
+    expect(injected).toBe(false)
+    expect(event.system[0].text).toBe("BASE SYSTEM")
+    expect(snapshotCalls).toEqual([])
+  })
+
+  it("logs the predicate failure without rejecting the hook", async () => {
+    const logs: unknown[][] = []
+    const { deps } = makeDeps({
+      isTitleGenerator: () => {
+        throw new Error("predicate boom")
+      },
+      log: (...args: unknown[]) => {
+        logs.push(args)
+      },
+    })
     const event = makeEvent()
+
+    await injectPersona(event, deps)
+
+    expect(logs.some((args) => String(args[0]).includes("ERROR in isTitleGenerator"))).toBe(true)
+    expect(logs.some((args) => args.some((a) => String(a).includes("predicate boom")))).toBe(true)
+  })
+})
+
+describe("injectPersona — explicit false continues (title predicate)", () => {
+  it("continues injection when the predicate explicitly returns false", async () => {
+    const { deps, snapshotCalls } = makeDeps({ isTitleGenerator: () => false })
+    const event = makeEvent({ sessionID: "session-explicit-false" })
 
     const injected = await injectPersona(event, deps)
 
     expect(injected).toBe(true)
     expect(event.system[0].text).toBe(`${MARKER}\nBE A HERO\n\n---\n\nBASE SYSTEM`)
+    expect(snapshotCalls).toHaveLength(1)
+    expect(snapshotCalls[0].rawText).toBe(`${MARKER}\nBE A HERO\n\n---\n\nBASE SYSTEM`)
   })
+})
 
+describe("injectPersona — non-boolean title predicate results (fail closed)", () => {
+  // Only an explicit boolean can prove the call is (not) title generation.
+  // Every other runtime value is indeterminate, so the pipeline must abort
+  // before any side effect — no injection, no snapshot, no config read — and
+  // the hook must never reject.
+  const RESULTS: Array<[label: string, result: unknown]> = [
+    ["undefined", undefined],
+    ["null", null],
+    ["0", 0],
+    ['""', ""],
+    ['"false"', "false"],
+    ["{}", {}],
+  ]
+
+  for (const [label, result] of RESULTS) {
+    it(`fails closed when the predicate returns ${label}`, async () => {
+      let readConfigCalls = 0
+      const { deps, snapshotCalls } = makeDeps({
+        readConfig: async () => {
+          readConfigCalls += 1
+          return { persona: "hero" }
+        },
+        isTitleGenerator: (() => result) as unknown as (system: string[]) => boolean,
+      })
+      const event = makeEvent({ sessionID: `session-${label}` })
+
+      const injected = await injectPersona(event, deps)
+
+      expect(injected).toBe(false)
+      expect(event.system).toHaveLength(1)
+      expect(event.system[0].text).toBe("BASE SYSTEM")
+      expect(snapshotCalls).toEqual([])
+      // Fails closed before resolving the persona — no config read at all.
+      expect(readConfigCalls).toBe(0)
+    })
+  }
+})
+
+describe("injectPersona — writeSnapshot resilience", () => {
   it("does not reject when writeSnapshot rejects", async () => {
     const { deps } = makeDeps({
       writeSnapshot: async () => {
