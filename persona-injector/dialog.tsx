@@ -1,11 +1,17 @@
 /** @jsxImportSource @opentui/solid */
-import type { TuiPluginApi } from "@opencode-ai/plugin/tui"
+/**
+ * Persona selection dialog — shared by the v1 and v2 entrypoints.
+ *
+ * It consumes only the host-agnostic `WlibHost` adapter (built by
+ * `createV1Host` / `createV2Host`), never a raw plugin API, so a single
+ * implementation serves both host generations without mixing their APIs.
+ */
+import type { WlibHost } from "./wlib/src/host/types"
 import { onMount, onCleanup, createSignal } from "solid-js"
 import { homedir } from "node:os"
 import { writeConfig } from "./config"
 import { makeScrollState } from "./wlib/src/core/scroll"
 import { registerDialogKeyLayer } from "./wlib/src/core/keys"
-import { resolveThemeColors } from "./wlib/src/core/theme"
 import { DialogShell } from "./wlib/src/ui/dialog"
 import type { PersonaMeta } from "./types"
 import { personaDialogMaxHeight } from "./persona-dialog-fit"
@@ -13,12 +19,13 @@ import { personaDialogMaxHeight } from "./persona-dialog-fit"
 const PERSONAS_DIR = `${homedir()}/.config/opencode/personas`
 
 export function openPersonaDialog(
-  api: TuiPluginApi,
+  host: WlibHost,
+  notify: (message: string) => void,
   onPersonaChanged: (id: string | null) => void,
   personas: () => PersonaMeta[],
   activeId: () => string | null,
 ) {
-  const { fg, muted, red, primary, selectedText } = resolveThemeColors(api.theme.current)
+  const { fg, muted, red, primary, selectedText } = host.theme()
 
   const [selectedIndex, setSelectedIndex] = createSignal(0)
   const [loading, setLoading] = createSignal(true)
@@ -48,7 +55,7 @@ export function openPersonaDialog(
     const active = activeId()
     if (active) {
       const selectable = getSelectableItems()
-      const idx = selectable.findIndex(s => s.id === active)
+      const idx = selectable.findIndex((s) => s.id === active)
       setSelectedIndex(idx >= 0 ? idx : 0)
     } else {
       setSelectedIndex(0) // "Disabled" row
@@ -58,7 +65,7 @@ export function openPersonaDialog(
   async function selectPersona(id: string | null) {
     await writeConfig({ persona: id })
     onPersonaChanged(id)
-    api.ui.toast({ message: id ? `${personas().find(p => p.id === id)?.displayName ?? id} enabled` : "Persona disabled" })
+    notify(id ? `${personas().find((p) => p.id === id)?.displayName ?? id} enabled` : "Persona disabled")
   }
 
   function getSelectedId(): string | null {
@@ -88,16 +95,16 @@ export function openPersonaDialog(
     if (key === "enter") {
       const id = getSelectedId()
       selectPersona(id)
-      api.ui.dialog.clear()
+      host.dialog.clear()
       return true
     }
     return false
   }
 
-  api.ui.dialog.replace(() => {
+  host.dialog.show(() => {
     const dialogMaxHeight = personaDialogMaxHeight(personas().length)
     onMount(() => {
-      cleanupKeyLayer = registerDialogKeyLayer(api, {
+      cleanupKeyLayer = registerDialogKeyLayer(host, {
         bindings: [
           { key: "up",      cmd: "persona.up",      desc: "Move up" },
           { key: "down",    cmd: "persona.down",    desc: "Move down" },
@@ -108,7 +115,7 @@ export function openPersonaDialog(
           { name: "persona.up",      title: "Move Up",   run: async () => { handleKey("up") } },
           { name: "persona.down",    title: "Move Down", run: async () => { handleKey("down") } },
           { name: "persona.select",  title: "Select",    run: async () => { handleKey("enter") } },
-          { name: "persona.close",   title: "Close",     run: async () => { api.ui.dialog.clear() } },
+          { name: "persona.close",   title: "Close",     run: async () => { host.dialog.clear() } },
         ],
       })
 
@@ -124,7 +131,7 @@ export function openPersonaDialog(
 
     return (
       <DialogShell
-        api={api}
+        host={host}
         title="Persona Injector"
         subtitle="— Select persona"
         fg={fg}
@@ -132,7 +139,6 @@ export function openPersonaDialog(
         scroll={scroll}
         footer={<text fg={muted}>↑↓ navigate · enter select · esc close</text>}
         desired={{ size: "medium", maxHeight: dialogMaxHeight }}
-        onSizeChange={(size) => api.ui.dialog.setSize(size)}
       >
         {loading() ? (
           <text fg={muted}>Loading personas…</text>

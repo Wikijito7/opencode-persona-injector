@@ -1,3 +1,13 @@
+/**
+ * @deprecated OpenCode v1 server entrypoint — transition window only.
+ *
+ * OpenCode 2.x replaces `experimental.chat.system.transform` / `chat.message`
+ * with the session context hook. This entrypoint exists so v1 users keep
+ * working while they migrate; new work targets `persona-injector/index.ts`.
+ *
+ * v1 selection: auto-loaded from the config `plugins/` directory. Do NOT deploy
+ * this file alongside the v2 plugin package (see README / `deploy` skill).
+ */
 import { homedir } from "node:os"
 import { readConfig } from "./persona-injector/config"
 import { loadPersonas, resolvePersonaPrompt } from "./persona-injector/personas"
@@ -5,6 +15,13 @@ import type { PersonaMeta } from "./persona-injector/types"
 import { fileURLToPath } from "node:url"
 import { createLog } from "./persona-injector/wlib/src/core/log"
 import { writeSystemSnapshot, isTitleGenerator } from "./persona-injector/wlib/src/core/system"
+import { detectPrimaryAgent } from "./persona-injector/agent-detection"
+import { PERSONA_MARKER as MARKER } from "./persona-injector/injection"
+
+// Re-exported so the v1 module keeps its public surface (and the inject tests
+// keep importing `detectPrimaryAgent` from here). The implementation is shared
+// with the v2 server entrypoint via `./persona-injector/agent-detection`.
+export { detectPrimaryAgent }
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url))
 const LOG_DIR = `${__dirname}logs`
@@ -19,7 +36,6 @@ function snap(label: string, system: string[] | undefined) {
 }
 
 const PERSONAS_DIR = `${homedir()}/.config/opencode/personas`
-const MARKER = "Instructions from: persona-injector"
 
 // Map<personaId, Map<agent, prompt>> — persona prompts cached after first load
 const personaPromptCache = new Map<string, Map<string, string>>()
@@ -52,24 +68,6 @@ export async function loadPersonaPrompts(
   personaPromptCache.set(personaId, prompts)
   log("loadPersonaPrompts — personaId:", personaId, "found meta:", !!meta, "prompts:", [...prompts.keys()])
   return prompts
-}
-
-/**
- * Detect the primary agent name from the assembled system content.
- * Reliable even when `chat.message` fires after `system.transform`
- * (hook-ordering race on the first call of a session).
- *
- * - Coordinator: the system contains "Lead Coordinator Agent"
- * - Plan/Build:   the system starts with "You are opencode" (the standard
- *                 OpenCode preamble) but has NO "Lead Coordinator Agent"
- * - Subagents:    none of the above — return undefined; subagents are
- *                 resolved via the sessionAgent bridge, not content detection
- */
-export function detectPrimaryAgent(system: string[]): string | undefined {
-  const text = system.join("\n")
-  if (text.includes("Lead Coordinator Agent")) return "coordinator"
-  if (/^You are (OpenCode|opencode)\b/i.test(text.trimStart())) return "plan"
-  return undefined
 }
 
 export const PersonaInjectorPlugin = async () => {

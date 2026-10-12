@@ -5,7 +5,7 @@ description: "IMPORTANT: Load when writing or modifying tests in this repo. Miss
 
 ## When to use me
 - When writing a new test file or test case
-- When modifying behavior in `persona-injector/config.ts`, `persona-injector/personas.ts`, or `persona-injector-server.ts`
+- When modifying behavior in `persona-injector/config.ts`, `personas.ts`, `agent-detection.ts`, or the server entrypoints' pure logic
 - When a test needs to touch the filesystem or personas on disk
 
 ## Not intended for
@@ -29,14 +29,17 @@ bun test
 |-----------------|---------------|
 | `persona-injector/config.ts` | `tests/persona-injector/config.test.ts` |
 | `persona-injector/personas.ts` | `tests/persona-injector/personas.test.ts` |
-| `persona-injector-server.ts` (e.g. `detectPrimaryAgent`) | `tests/persona-injector/inject.test.ts` |
-| wlib modules | inside `persona-injector/wlib/` (own test files) |
+| `persona-injector/persona-dialog-fit.ts` | `tests/persona-injector/persona-dialog-fit.test.ts` |
+| `persona-injector/agent-detection.ts` (`detectPrimaryAgent`) | `tests/persona-injector/inject.test.ts` |
+| wlib modules | inside `persona-injector/wlib/test/` (own test files) |
 
 ## Conventions
 
 - Use `describe` / `it` / `expect` (+ `spyOn`, `afterEach`) from `bun:test`.
 - Import via the `@persona-injector/*` alias (e.g. `@persona-injector/personas`), configured in `tests/tsconfig.json`.
-- Test **pure functions only** — `config.ts` and `personas.ts` are designed for this (no TUI imports). If a module can't be tested purely, it belongs in `architecture`'s crosshairs, not in a workaround.
+- The v1 `persona-injector-server.ts` re-exports `detectPrimaryAgent` from `persona-injector/agent-detection.ts`, so `inject.test.ts` may import either path.
+- Test **pure functions only** — `config.ts`, `personas.ts`, `agent-detection.ts`, `persona-dialog-fit.ts` are designed for this (no host imports). If a module can't be tested purely, it belongs in `architecture`'s crosshairs, not in a workaround.
+- The v2 entrypoints (`persona-injector/index.ts`, `tui.tsx`) and the shared `dialog.tsx` depend on host packages (`@opencode/plugin`, `@opentui/solid`) that are not resolvable in isolation. Test their **pure helpers** instead; do not import the host packages into `bun:test` suites. A host-shaped fake (a plain object matching `WlibHost`) is the only acceptable way to exercise `dialog.tsx` behavior.
 - **Scroll-like UI elements**: fake the element (`scrollBy`, `scrollHeight`, `clientHeight`, `scrollTop`) instead of importing DOM — do not pull `@opentui/solid` into unit tests.
 - **Filesystem**: `mkdtempSync(join(tmpdir(), "…"))` + cleanup in `afterEach` (see `personas.test.ts` `createdDirs` pattern) — never write to repo paths.
 - **Config tests**: exercise the read precedence — new config wins, explicit `null` persona disables, malformed/missing file falls back to legacy `jungle-mode.json`, legacy `enabled: true` maps to `"jungle-mode"`.

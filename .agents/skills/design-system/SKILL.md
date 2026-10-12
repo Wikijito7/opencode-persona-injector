@@ -16,10 +16,11 @@ description: "IMPORTANT: Load when building or reviewing dialog UI, overlays, or
 
 ---
 
-## Theme palette (from `wlib/theme.ts` `resolveThemeColors`)
+## Theme palette (from the `WlibHost` adapter)
 
+- The dialog reads colors from `host.theme()` — never a raw host API. v2 resolves semantic tokens via `resolveSemanticTheme`; v1 via `resolveThemeColors`.
 - Keys consumed by the persona dialog: `fg`, `muted`, `red`, `primary`, `selectedText` (may be `undefined`).
-- `background` and `panel` ALSO exist in `wlib/theme.ts` now, but `persona-injector/dialog.tsx` does NOT consume them yet. They are available for future use (e.g. overlays/popup surfaces) — do not assume the dialog reads them today.
+- `background` and `panel` ALSO exist in the palette, but `persona-injector/dialog.tsx` does NOT consume them yet. They are available for future use (e.g. overlays/popup surfaces) — do not assume the dialog reads them today.
 - Values are `ThemeColorValue` (`string | RGBA`) — pass through as-is, never string-coerce.
 
 ## Selection / highlight convention (settled)
@@ -31,12 +32,13 @@ description: "IMPORTANT: Load when building or reviewing dialog UI, overlays, or
 
 ## Dialog sizing (settled)
 
-- `DialogSize` tiers: `medium` (60) / `large` (88) / `xlarge` (116) via wlib `dialog-fit.ts` (`DIALOG_WIDTHS`) + `useDialogSizing`.
+- `DialogSize` tiers: `medium` (60) / `large` (88) / `xlarge` (116) via wlib `core/dialog-fit.ts` (`DIALOG_WIDTHS`) + `useDialogSizing(host)`.
 - `opencode-persona-injector` uses the `medium` tier (requested via `desired={{ size: "medium", maxHeight: dialogMaxHeight }}`). Do NOT claim or switch to `large`.
+- `DialogShell` applies the resolved width tier itself (`host.dialog.set({ size })`); there is no per-entry `onSizeChange`/`setSize` wiring.
 
 ## Root dialog box (settled)
 
-- `paddingLeft={2} paddingRight={2} paddingBottom={1} flexDirection="column" gap={1}` — applied by `DialogShell` (`wlib/dialog.tsx`).
+- `paddingLeft={2} paddingRight={2} paddingBottom={1} flexDirection="column" gap={1}` — applied by `DialogShell` (`wlib/src/ui/dialog.tsx`).
 
 ## Footer (settled)
 
@@ -46,7 +48,12 @@ description: "IMPORTANT: Load when building or reviewing dialog UI, overlays, or
 ## Overlays (none currently)
 
 - The persona dialog currently has NO overlays.
-- Shared `HelpOverlay` and `ExportOverlay` components exist in wlib (`wlib/help-overlay.tsx`, `wlib/export-overlay.tsx`) for future reuse across the network, but they are NOT used here.
+- Shared `HelpOverlay` and `ExportOverlay` components exist in wlib (`wlib/src/ui/help-overlay.tsx`, `wlib/src/ui/export-overlay.tsx`) for future reuse across the network, but they are NOT used here.
+
+## Slots (v2)
+
+- Active-persona indicator is claimed with `context.ui.slot({ append: "prompt.footer.status", render })` and the same for `home.footer.status`.
+- The v1 entry uses `api.slots.register({ order: 176, slots: { session_prompt_right, home_prompt_right } })`. The visual output is identical.
 
 ## Shared design language (Wokis network)
 
@@ -64,5 +71,5 @@ description: "IMPORTANT: Load when building or reviewing dialog UI, overlays, or
 
 ## References
 - `architecture` — where code lives
-- `wlib` — shared helpers (theme, dialog sizing, clipboard)
+- `wlib` — host adapters and shared helpers (theme, dialog sizing)
 - `plugin-development` — dialog/key wiring

@@ -16,32 +16,46 @@ description: "CRITICAL: Load when adding, moving, or refactoring code in this re
 
 ---
 
+## Host generations
+
+This repo targets **OpenCode 2.x**. A deprecated v1 layout survives the transition window. The two generations are separate source files and separate host adapters; never mix them.
+
+| | v2 (production) | v1 (deprecated) |
+|---|---|---|
+| Server entry | `persona-injector/index.ts` | `persona-injector-server.ts` |
+| TUI entry | `persona-injector/tui.tsx` | `persona-injector.tsx` |
+| Host adapter | `createV2Host(context)` | `createV1Host(api)` |
+
 ## Repo layout
 
 | Area | Location | Rules |
 |------|----------|-------|
-| Server plugin | `persona-injector-server.ts` (root) | opencode hooks only; no TUI/JSX |
-| TUI entry | `persona-injector.tsx` (root) | registers `/persona` command + prompt indicator slots |
-| Pure domain | `persona-injector/config.ts`, `persona-injector/personas.ts`, `persona-injector/types.ts` | pure functions, fully testable |
-| TUI components | `persona-injector/dialog.tsx`, `persona-injector/prompt-indicator.tsx` | presentation only; no business logic |
+| **v2** server plugin | `persona-injector/index.ts` | `Plugin.define` from `@opencode/plugin`; session context hooks only; no TUI/JSX |
+| **v2** TUI entry | `persona-injector/tui.tsx` | `Plugin.define` from `@opencode/plugin/tui`; slots + `/persona` command |
+| **v1** server plugin | `persona-injector-server.ts` (root) | DEPRECATED — `experimental.chat.system.transform` + `chat.message` |
+| **v1** TUI entry | `persona-injector.tsx` (root) | DEPRECATED — `tui.json` registration |
+| Pure domain | `persona-injector/config.ts`, `personas.ts`, `types.ts`, `agent-detection.ts`, `persona-dialog-fit.ts` | pure functions, fully testable, **no host imports** |
+| TUI components | `persona-injector/dialog.tsx`, `prompt-indicator.tsx` | presentation only; **host-agnostic — consume only `WlibHost`** |
 | Persona packs | `personas/*.json` | shipped defaults (`jungle-mode.json`) + `_template.json` (disabled) |
 | Shared code | `persona-injector/wlib/` (submodule) | ALL cross-cutting helpers live here — never duplicate |
 | Tests | `tests/persona-injector/*.test.ts` | mirrors the pure modules |
 
 ## Conventions (MUST)
 
-- **Pure modules** (`config.ts`, `personas.ts`, `types.ts`) must not import `@opencode-ai/plugin/tui`, `solid-js`, or the plugin API — that's what makes them testable with `bun:test`.
-- **Domain before UI**: put logic in `config.ts` / `personas.ts`, then have the `.tsx` files call it. No logic in dialogs or indicators.
+- **Pure modules** (`config.ts`, `personas.ts`, `types.ts`, `agent-detection.ts`, `persona-dialog-fit.ts`) must not import `@opencode/plugin`, `@opencode/plugin/tui`, `@opencode-ai/plugin/tui`, `solid-js`, or a host adapter — that's what makes them testable with `bun:test`.
+- **Domain before UI**: put logic in `config.ts` / `personas.ts`, then have the entrypoints/components call it. No logic in dialogs or indicators.
+- **One host adapter per runtime**: a v2 file builds `createV2Host` and never imports `./wlib/src/host/v1`; a v1 file builds `createV1Host` and never imports `./wlib/src/host/v2`. The shared dialog/indicator only ever see `WlibHost`.
 - **Config read precedence** (`readConfig`): new `~/.config/opencode/persona-injector.json` with a persona string → wins outright; explicit `null` persona → disabled (no legacy fallback); parse failure or missing file → legacy `~/.config/opencode/jungle-mode.json` migration (only maps to `"jungle-mode"` when `enabled: true`). Losing this precedence breaks migration.
 - **Persona loading** (`loadPersonas`): skips non-JSON/invalid files with a warning, defaults `color` to `#22c55e` at load time, defaults `enabled` to `true` (non-template only), sorts by id (`localeCompare`). See `persona-schema`.
-- **No message mutation on the server**: `chat.message` only records the agent into the `sessionAgent` bridge — injection happens solely via `experimental.chat.system.transform`.
-- **Shared concerns always come from wlib**: scroll, keys, theme, log, reload, clipboard, dialog sizing, system snapshots. Creating local copies is a blocker.
-- **System snapshot sidecar** (`wlib/system`): the server persists the final system prompt per session so other plugins (e.g. model-usage) can read it — keep writing it in the `finally` of `system.transform`, skipping title-generator calls.
+- **No message mutation on the server**: v2 injects solely into `event.system`; v1 records the agent into the `sessionAgent` bridge and injects via `system.transform`.
+- **Shared concerns always come from wlib**: scroll, keys, theme, log, reload, clipboard, dialog sizing, system snapshots, host adapters. Creating local copies is a blocker.
+- **System snapshot sidecar** (`wlib/system`): the server persists the final system prompt per session so other plugins (e.g. model-usage) can read it — keep writing it in the `finally` of the context hook, skipping title-generator calls.
 
 ## Blockers (MUST NOT)
 
-- Importing the TUI API or SolidJS inside `config.ts` / `personas.ts` / `types.ts`
-- Recreating wlib functionality locally (scroll/keys/theme/log/reload/clipboard/dialog/system)
+- Importing a host API or SolidJS inside the pure modules
+- Importing BOTH `host/v1` and `host/v2` in one runtime adapter, or passing a raw plugin API into the shared dialog
+- Recreating wlib functionality locally (host adapters/scroll/keys/theme/log/reload/clipboard/dialog/system)
 - Putting business logic inside `.tsx` components
 - Duplicating pure logic between server and TUI entry — both must call the same `config.ts` / `personas.ts` functions
 - Editing persona JSON validation only in the dialog — validation lives in `personas.ts` and is shared
@@ -50,5 +64,5 @@ description: "CRITICAL: Load when adding, moving, or refactoring code in this re
 - `plugin-development` — entry points, hooks, dialog flow
 - `persona-schema` — persona JSON format and resolution rules
 - `testing` — how to verify pure modules
-- `wlib` — what the shared library provides
+- `wlib` — what the shared library provides (host adapters)
 - `quality-check` — gates before reporting done
