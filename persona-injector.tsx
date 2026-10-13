@@ -14,16 +14,13 @@
  */
 import type { TuiPlugin, TuiPluginModule } from "@opencode-ai/plugin/tui"
 import { createSignal } from "solid-js"
-import { homedir } from "node:os"
 import { PersonaPromptIndicator } from "./persona-injector/prompt-indicator"
 import { openPersonaDialog } from "./persona-injector/dialog"
-import { readConfig } from "./persona-injector/config"
+import { readConfig, PERSONAS_DIR } from "./persona-injector/config"
 import { loadPersonas } from "./persona-injector/personas"
 import { createV1Host } from "./persona-injector/wlib/src/host/v1"
 import { registerSlashCommand } from "./persona-injector/wlib/src/core/command"
 import type { PersonaMeta } from "./persona-injector/types"
-
-const PERSONAS_DIR = `${homedir()}/.config/opencode/personas`
 
 const tui: TuiPlugin = async (api) => {
   // One adapter for the whole runtime — never mixed with the v2 host API.

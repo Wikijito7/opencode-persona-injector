@@ -42,7 +42,7 @@ description: "IMPORTANT: Load when building or reviewing dialog UI, overlays, or
 
 ## Footer (settled)
 
-- `↑↓ navigate  ·  enter select  ·  esc close`
+- `↑↓/jk navigate  ·  enter select  ·  esc close`
 - A help overlay was evaluated and DROPPED: the footer already shows the shortcuts, so there is NO `h help` binding. Do not re-add it.
 
 ## Overlays (none currently)
@@ -65,8 +65,8 @@ description: "IMPORTANT: Load when building or reviewing dialog UI, overlays, or
 |--------|------------------------|-----------------------------|
 | Dialog size | `large` (88) | `medium` (60) |
 | Root box | inlined (not `DialogShell`) | `DialogShell` |
-| Nav keys | arrows (analyze tab nav is arrow-only `← →`; scroll arrow-only `↑↓` + `PgUp`/`PgDn`) | `↑↓` |
-| Footer | `← → {gran} · ↑↓ scroll · e export · h help` | `↑↓ navigate · enter select · esc close` |
+| Nav keys | arrows (analyze tab nav is arrow-only `← →`; scroll arrow-only `↑↓` + `PgUp`/`PgDn`) | `↑↓` + `j`/`k` aliases |
+| Footer | `← → {gran} · ↑↓ scroll · e export · h help` | `↑↓/jk navigate · enter select · esc close` |
 | Overlays | `HelpOverlay` + `ExportOverlay` | none (single-list dialog) |
 
 ## References

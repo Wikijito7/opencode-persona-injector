@@ -19,16 +19,13 @@
  */
 import { Plugin } from "@opencode/plugin/tui"
 import { createSignal } from "solid-js"
-import { homedir } from "node:os"
 import { PersonaPromptIndicator } from "./prompt-indicator"
 import { openPersonaDialog } from "./dialog"
-import { readConfig } from "./config"
+import { readConfig, PERSONAS_DIR } from "./config"
 import { loadPersonas } from "./personas"
 import { createV2Host } from "./wlib/src/host/v2"
 import { registerSlashCommand } from "./wlib/src/core/command"
 import type { PersonaMeta } from "./types"
-
-const PERSONAS_DIR = `${homedir()}/.config/opencode/personas`
 
 export default Plugin.define({
   id: "persona-injector",

@@ -8,8 +8,7 @@
  * v1 selection: auto-loaded from the config `plugins/` directory. Do NOT deploy
  * this file alongside the v2 plugin package (see README / `deploy` skill).
  */
-import { homedir } from "node:os"
-import { readConfig } from "./persona-injector/config"
+import { readConfig, PERSONAS_DIR } from "./persona-injector/config"
 import { loadPersonas, resolvePersonaPrompt } from "./persona-injector/personas"
 import type { PersonaMeta } from "./persona-injector/types"
 import { fileURLToPath } from "node:url"
@@ -52,8 +51,6 @@ function describeValue(value: unknown): string {
     return `<unprintable ${typeof value}>`
   }
 }
-
-const PERSONAS_DIR = `${homedir()}/.config/opencode/personas`
 
 // Map<personaId, Map<agent, prompt>> — persona prompts cached after first load
 const personaPromptCache = new Map<string, Map<string, string>>()

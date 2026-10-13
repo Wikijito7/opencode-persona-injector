@@ -25,9 +25,8 @@
  * `persona-injector-server.ts` and uses the deprecated `createV1Host` adapter.
  */
 import { Plugin } from "@opencode/plugin"
-import { homedir } from "node:os"
 import { fileURLToPath } from "node:url"
-import { readConfig } from "./config"
+import { readConfig, PERSONAS_DIR } from "./config"
 import { loadPersonas, resolvePersonaPrompt } from "./personas"
 import type { PersonaMeta } from "./types"
 import { createLog } from "./wlib/src/core/log"
@@ -37,8 +36,6 @@ import { injectPersona, type PersonaInjectionEvent } from "./injection"
 const LOG_DIR = fileURLToPath(new URL("./logs", import.meta.url))
 const logger = createLog({ dir: LOG_DIR, fileName: "persona-injector.log" })
 const log = logger.log
-
-const PERSONAS_DIR = `${homedir()}/.config/opencode/personas`
 
 // Map<personaId, Map<agent, prompt>> — persona prompts cached after first load
 const personaPromptCache = new Map<string, Map<string, string>>()

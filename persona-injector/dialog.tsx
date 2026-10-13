@@ -8,8 +8,7 @@
  */
 import type { WlibHost } from "./wlib/src/host/types"
 import { onMount, onCleanup, createSignal } from "solid-js"
-import { homedir } from "node:os"
-import { writeConfig } from "./config"
+import { writeConfig, PERSONAS_DIR } from "./config"
 import { createPersonaSelectionPersister } from "./persona-selection"
 import { createDialogOwnership, persistAndCloseIfOwned, closeIfOwned } from "./dialog-ownership"
 import { makeScrollState } from "./wlib/src/core/scroll"
@@ -17,8 +16,6 @@ import { registerDialogKeyLayer } from "./wlib/src/core/keys"
 import { DialogShell } from "./wlib/src/ui/dialog"
 import type { PersonaMeta } from "./types"
 import { personaDialogMaxHeight } from "./persona-dialog-fit"
-
-const PERSONAS_DIR = `${homedir()}/.config/opencode/personas`
 
 export function openPersonaDialog(
   host: WlibHost,
@@ -141,7 +138,9 @@ export function openPersonaDialog(
       cleanupKeyLayer = registerDialogKeyLayer(host, {
         bindings: [
           { key: "up",      cmd: "persona.up",      desc: "Move up" },
+          { key: "k",       cmd: "persona.up",      desc: "Move up" },
           { key: "down",    cmd: "persona.down",    desc: "Move down" },
+          { key: "j",       cmd: "persona.down",    desc: "Move down" },
           { key: "enter",   cmd: "persona.select",  desc: "Select" },
           { key: "escape",  cmd: "persona.close",   desc: "Close" },
         ],
@@ -175,14 +174,19 @@ export function openPersonaDialog(
         fg={fg}
         muted={muted}
         scroll={scroll}
-        footer={<text fg={muted}>↑↓ navigate · enter select · esc close</text>}
+        footer={<text fg={muted}>↑↓/jk navigate · enter select · esc close</text>}
         desired={{ size: "medium", maxHeight: dialogMaxHeight }}
       >
         {loading() ? (
           <text fg={muted}>Loading personas…</text>
         ) : (
           <box flexDirection="column" gap={1}>
-            {error() ? <text fg={red}>{error()}</text> : null}
+            {error() ? (
+              <box flexDirection="column" gap={1}>
+                <text fg={red}><b>Error</b></text>
+                <text fg={muted}>{error()}</text>
+              </box>
+            ) : null}
             {personas().length === 0 ? (
               <text fg={muted}>No personas found in {PERSONAS_DIR}</text>
             ) : (
