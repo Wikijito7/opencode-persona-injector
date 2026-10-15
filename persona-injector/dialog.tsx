@@ -1,24 +1,30 @@
 /** @jsxImportSource @opentui/solid */
-import type { TuiPluginApi } from "@opencode-ai/plugin/tui"
+/**
+ * Persona selection dialog — shared by the v1 and v2 entrypoints.
+ *
+ * It consumes only the host-agnostic `WlibHost` adapter (built by
+ * `createV1Host` / `createV2Host`), never a raw plugin API, so a single
+ * implementation serves both host generations without mixing their APIs.
+ */
+import type { WlibHost } from "./wlib/src/host/types"
 import { onMount, onCleanup, createSignal } from "solid-js"
-import { homedir } from "node:os"
-import { writeConfig } from "./config"
+import { writeConfig, PERSONAS_DIR } from "./config"
+import { createPersonaSelectionPersister } from "./persona-selection"
+import { createDialogOwnership, persistAndCloseIfOwned, closeIfOwned } from "./dialog-ownership"
 import { makeScrollState } from "./wlib/src/core/scroll"
 import { registerDialogKeyLayer } from "./wlib/src/core/keys"
-import { resolveThemeColors } from "./wlib/src/core/theme"
 import { DialogShell } from "./wlib/src/ui/dialog"
 import type { PersonaMeta } from "./types"
 import { personaDialogMaxHeight } from "./persona-dialog-fit"
 
-const PERSONAS_DIR = `${homedir()}/.config/opencode/personas`
-
 export function openPersonaDialog(
-  api: TuiPluginApi,
+  host: WlibHost,
+  notify: (message: string) => void,
   onPersonaChanged: (id: string | null) => void,
   personas: () => PersonaMeta[],
   activeId: () => string | null,
 ) {
-  const { fg, muted, red, primary, selectedText } = resolveThemeColors(api.theme.current)
+  const { fg, muted, red, primary, selectedText } = host.theme()
 
   const [selectedIndex, setSelectedIndex] = createSignal(0)
   const [loading, setLoading] = createSignal(true)
@@ -27,6 +33,19 @@ export function openPersonaDialog(
   const scroll = makeScrollState(createSignal)
 
   let cleanupKeyLayer: (() => void) | null = null
+
+  /**
+   * Ownership guard for the async Enter path.
+   *
+   * Persisting a selection is awaited, but the dialog can be dismissed
+   * (escape, backdrop click), replaced by another dialog, or disposed while
+   * that write is still in flight. Whichever happens first invalidates the
+   * token via the host `show`'s `onClose` callback (fired on dismiss AND on
+   * replacement) and via `onCleanup` (fired on disposal). A late write
+   * resolution therefore only closes the dialog it belongs to — it never
+   * clears a newer dialog that took its place.
+   */
+  const ownership = createDialogOwnership()
 
   // Build list of selectable items (excludes template personas)
   // Index 0 = "Disabled" (null persona), then non-template personas in order
@@ -48,17 +67,32 @@ export function openPersonaDialog(
     const active = activeId()
     if (active) {
       const selectable = getSelectableItems()
-      const idx = selectable.findIndex(s => s.id === active)
+      const idx = selectable.findIndex((s) => s.id === active)
       setSelectedIndex(idx >= 0 ? idx : 0)
     } else {
       setSelectedIndex(0) // "Disabled" row
     }
   }
 
-  async function selectPersona(id: string | null) {
-    await writeConfig({ persona: id })
-    onPersonaChanged(id)
-    api.ui.toast({ message: id ? `${personas().find(p => p.id === id)?.displayName ?? id} enabled` : "Persona disabled" })
+  /**
+   * Persist the selection and reflect it locally.
+   *
+   * The persister carries an in-flight guard: a second Enter while a write is
+   * pending is ignored outright (resolves `false`), so repeated keypresses
+   * cannot start concurrent writes or emit duplicate success/failure actions.
+   * Returns `true` only when the write succeeded — a rejected write keeps the
+   * dialog open (with the inline error) so the user can retry.
+   */
+  const persistSelection = createPersonaSelectionPersister({
+    write: writeConfig,
+    labelFor: (personaId) => personas().find((p) => p.id === personaId)?.displayName,
+    setError: (message) => setError(message),
+    notify,
+    onPersonaChanged,
+  })
+
+  async function selectPersona(id: string | null): Promise<boolean> {
+    return persistSelection(id)
   }
 
   function getSelectedId(): string | null {
@@ -66,7 +100,7 @@ export function openPersonaDialog(
     return selectable[selectedIndex()]?.id ?? null
   }
 
-  function handleKey(key: string) {
+  async function handleKey(key: string): Promise<boolean> {
     if (key === "up") {
       const current = selectedIndex()
       if (current > 0) {
@@ -86,29 +120,35 @@ export function openPersonaDialog(
       return true
     }
     if (key === "enter") {
+      // A stale Enter (queued before this dialog was dismissed/replaced) must
+      // neither start a write for a dead dialog nor close whatever is current.
+      // The ownership check after the await ensures a write that resolves after
+      // the dialog was dismissed or replaced does NOT clear the newer dialog.
       const id = getSelectedId()
-      selectPersona(id)
-      api.ui.dialog.clear()
+      await persistAndCloseIfOwned(ownership, () => selectPersona(id), () => host.dialog.clear())
       return true
     }
     return false
   }
 
-  api.ui.dialog.replace(() => {
+  ownership.activate()
+  host.dialog.show(() => {
     const dialogMaxHeight = personaDialogMaxHeight(personas().length)
     onMount(() => {
-      cleanupKeyLayer = registerDialogKeyLayer(api, {
+      cleanupKeyLayer = registerDialogKeyLayer(host, {
         bindings: [
           { key: "up",      cmd: "persona.up",      desc: "Move up" },
+          { key: "k",       cmd: "persona.up",      desc: "Move up" },
           { key: "down",    cmd: "persona.down",    desc: "Move down" },
+          { key: "j",       cmd: "persona.down",    desc: "Move down" },
           { key: "enter",   cmd: "persona.select",  desc: "Select" },
           { key: "escape",  cmd: "persona.close",   desc: "Close" },
         ],
         commands: [
-          { name: "persona.up",      title: "Move Up",   run: async () => { handleKey("up") } },
-          { name: "persona.down",    title: "Move Down", run: async () => { handleKey("down") } },
-          { name: "persona.select",  title: "Select",    run: async () => { handleKey("enter") } },
-          { name: "persona.close",   title: "Close",     run: async () => { api.ui.dialog.clear() } },
+          { name: "persona.up",      title: "Move Up",   run: async () => { await handleKey("up") } },
+          { name: "persona.down",    title: "Move Down", run: async () => { await handleKey("down") } },
+          { name: "persona.select",  title: "Select",    run: async () => { await handleKey("enter") } },
+          { name: "persona.close",   title: "Close",     run: async () => { closeIfOwned(ownership, () => host.dialog.clear()) } },
         ],
       })
 
@@ -116,6 +156,10 @@ export function openPersonaDialog(
     })
 
     onCleanup(() => {
+      // Disposal is the host-agnostic invalidation: whether the dialog closed
+      // by escape/clear or was replaced, this component unmounts and any
+      // pending write must no longer be allowed to clear whatever is current.
+      ownership.invalidate()
       if (cleanupKeyLayer) {
         try { cleanupKeyLayer() } catch { /* ignore */ }
         cleanupKeyLayer = null
@@ -124,26 +168,28 @@ export function openPersonaDialog(
 
     return (
       <DialogShell
-        api={api}
+        host={host}
         title="Persona Injector"
         subtitle="— Select persona"
         fg={fg}
         muted={muted}
         scroll={scroll}
-        footer={<text fg={muted}>↑↓ navigate · enter select · esc close</text>}
+        footer={<text fg={muted}>↑↓/jk navigate · enter select · esc close</text>}
         desired={{ size: "medium", maxHeight: dialogMaxHeight }}
-        onSizeChange={(size) => api.ui.dialog.setSize(size)}
       >
         {loading() ? (
           <text fg={muted}>Loading personas…</text>
-        ) : error() ? (
-          <box flexDirection="column" gap={1}>
-            <text fg={red}><b>Error</b></text>
-            <text fg={muted}>{error()}</text>
-          </box>
-        ) : personas().length === 0 ? (
-          <text fg={muted}>No personas found in {PERSONAS_DIR}</text>
         ) : (
+          <box flexDirection="column" gap={1}>
+            {error() ? (
+              <box flexDirection="column" gap={1}>
+                <text fg={red}><b>Error</b></text>
+                <text fg={muted}>{error()}</text>
+              </box>
+            ) : null}
+            {personas().length === 0 ? (
+              <text fg={muted}>No personas found in {PERSONAS_DIR}</text>
+            ) : (
           (() => {
             // Selectable items map selectable-index -> visual row index
             const selectable = getSelectableItems()
@@ -183,8 +229,10 @@ export function openPersonaDialog(
               </box>
             )
           })()
+            )}
+          </box>
         )}
       </DialogShell>
     )
-  })
+  }, () => ownership.invalidate())
 }

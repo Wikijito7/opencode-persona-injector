@@ -1,10 +1,26 @@
-import { homedir } from "node:os"
-import { readConfig } from "./persona-injector/config"
+/**
+ * @deprecated OpenCode v1 server entrypoint — transition window only.
+ *
+ * OpenCode 2.x replaces `experimental.chat.system.transform` / `chat.message`
+ * with the session context hook. This entrypoint exists so v1 users keep
+ * working while they migrate; new work targets `persona-injector/index.ts`.
+ *
+ * v1 selection: auto-loaded from the config `plugins/` directory. Do NOT deploy
+ * this file alongside the v2 plugin package (see README / `deploy` skill).
+ */
+import { readConfig, PERSONAS_DIR } from "./persona-injector/config"
 import { loadPersonas, resolvePersonaPrompt } from "./persona-injector/personas"
 import type { PersonaMeta } from "./persona-injector/types"
 import { fileURLToPath } from "node:url"
 import { createLog } from "./persona-injector/wlib/src/core/log"
 import { writeSystemSnapshot, isTitleGenerator } from "./persona-injector/wlib/src/core/system"
+import { detectPrimaryAgent } from "./persona-injector/agent-detection"
+import { PERSONA_MARKER as MARKER } from "./persona-injector/injection"
+
+// Re-exported so the v1 module keeps its public surface (and the inject tests
+// keep importing `detectPrimaryAgent` from here). The implementation is shared
+// with the v2 server entrypoint via `./persona-injector/agent-detection`.
+export { detectPrimaryAgent }
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url))
 const LOG_DIR = `${__dirname}logs`
@@ -18,8 +34,23 @@ function snap(label: string, system: string[] | undefined) {
   log(`SNAPSHOT[${label}] len=${text.length}:\n${preview}`)
 }
 
-const PERSONAS_DIR = `${homedir()}/.config/opencode/personas`
-const MARKER = "Instructions from: persona-injector"
+/** Best-effort error message that never throws, so logging can't reject the hook. */
+function errorMessage(err: unknown): string {
+  try {
+    return err instanceof Error ? err.message : String(err)
+  } catch {
+    return "<unprintable error>"
+  }
+}
+
+/** Best-effort description of an arbitrary value that never throws. */
+function describeValue(value: unknown): string {
+  try {
+    return typeof value === "string" ? value : String(value)
+  } catch {
+    return `<unprintable ${typeof value}>`
+  }
+}
 
 // Map<personaId, Map<agent, prompt>> — persona prompts cached after first load
 const personaPromptCache = new Map<string, Map<string, string>>()
@@ -54,24 +85,6 @@ export async function loadPersonaPrompts(
   return prompts
 }
 
-/**
- * Detect the primary agent name from the assembled system content.
- * Reliable even when `chat.message` fires after `system.transform`
- * (hook-ordering race on the first call of a session).
- *
- * - Coordinator: the system contains "Lead Coordinator Agent"
- * - Plan/Build:   the system starts with "You are opencode" (the standard
- *                 OpenCode preamble) but has NO "Lead Coordinator Agent"
- * - Subagents:    none of the above — return undefined; subagents are
- *                 resolved via the sessionAgent bridge, not content detection
- */
-export function detectPrimaryAgent(system: string[]): string | undefined {
-  const text = system.join("\n")
-  if (text.includes("Lead Coordinator Agent")) return "coordinator"
-  if (/^You are (OpenCode|opencode)\b/i.test(text.trimStart())) return "plan"
-  return undefined
-}
-
 export const PersonaInjectorPlugin = async () => {
   const sessionAgent = new Map<string, string>()
 
@@ -82,7 +95,24 @@ export const PersonaInjectorPlugin = async () => {
       _input: { sessionID?: string; model: any },
       output: { system: string[] },
     ) => {
-      const isTitleGen = isTitleGenerator(output.system)
+      // Fail closed: only an explicit boolean `false` lets the pipeline
+      // continue. `true` skips injection; a thrown or non-boolean predicate is
+      // indeterminate, so we skip injection AND the snapshot rather than risk
+      // injecting a persona into a title-generation request. The hook never
+      // rejects, even when the predicate itself throws.
+      let isTitleGen: boolean
+      try {
+        const result = isTitleGenerator(output.system)
+        if (result === true || result === false) {
+          isTitleGen = result
+        } else {
+          log("ERROR in isTitleGenerator: non-boolean result, failing closed:", describeValue(result))
+          return
+        }
+      } catch (err) {
+        log("ERROR in isTitleGenerator:", errorMessage(err))
+        return
+      }
 
       try {
         log("system.transform FIRED — sessionID:", _input.sessionID, "system length:", output.system?.length)
@@ -132,13 +162,18 @@ export const PersonaInjectorPlugin = async () => {
         log("system.transform — injected MARKER for:", agent)
         snap("system.transform AFTER", output.system)
       } catch (err) {
-        log("ERROR in system.transform:", err instanceof Error ? err.message : String(err))
+        log("ERROR in system.transform:", errorMessage(err))
       } finally {
         // Persist the final system prompt (after injection, or the un-injected
         // truth when nothing was injected) so model-usage can read it.
-        // Skipped for title-generator calls.
+        // Skipped for title-generator calls, and never allowed to reject the
+        // hook on a broken writer.
         if (!isTitleGen && _input.sessionID) {
-          await writeSystemSnapshot(_input.sessionID, output.system.join("\n"))
+          try {
+            await writeSystemSnapshot(_input.sessionID, output.system.join("\n"))
+          } catch (err) {
+            log("ERROR in writeSystemSnapshot:", errorMessage(err))
+          }
         }
       }
     },
@@ -168,7 +203,10 @@ export const PersonaInjectorPlugin = async () => {
         // the system prompt for every agent type. No message mutation.
         sessionAgent.set(input.sessionID, agent)
       } catch (err) {
-        log("ERROR in chat.message:", err instanceof Error ? err.message : String(err))
+        // `errorMessage` never throws — a hostile thrown value (a proxy with a
+        // throwing `toString`, a cross-realm error, a revoked proxy) must not
+        // turn the logger itself into the failure.
+        log("ERROR in chat.message:", errorMessage(err))
       }
     },
   }
