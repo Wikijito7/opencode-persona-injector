@@ -19,6 +19,7 @@ description: "IMPORTANT: Load when building or reviewing dialog UI, overlays, or
 ## Theme palette (from the `WlibHost` adapter)
 
 - The dialog reads colors from `host.theme()` — never a raw host API. v2 resolves semantic tokens via `resolveSemanticTheme`; v1 via `resolveThemeColors`.
+- v2 `context.theme` is **already resolved**: its action-state fields are `focused` / `selected` / `base` (no `$` sigil — `$focused` / `$selected` appear only in raw theme JSON). The selection chip's `primary` comes from the **focused** state token (see `wlib` for the exact order); do not "fix" it by reading `$focused`.
 - Keys consumed by the persona dialog: `fg`, `muted`, `red`, `primary`, `selectedText` (may be `undefined`).
 - `background` and `panel` ALSO exist in the palette, but `persona-injector/dialog.tsx` does NOT consume them yet. They are available for future use (e.g. overlays/popup surfaces) — do not assume the dialog reads them today.
 - Values are `ThemeColorValue` (`string | RGBA`) — pass through as-is, never string-coerce.
@@ -42,7 +43,8 @@ description: "IMPORTANT: Load when building or reviewing dialog UI, overlays, or
 
 ## Footer (settled)
 
-- `↑↓/jk navigate  ·  enter select  ·  esc close`
+- `↑↓ navigate  ·  enter select  ·  esc close`
+- Navigation is arrow-only (`↑`/`↓`); do NOT re-add `j`/`k` aliases (settled Senior preference — the dialog matches the v1 arrow-only selector).
 - A help overlay was evaluated and DROPPED: the footer already shows the shortcuts, so there is NO `h help` binding. Do not re-add it.
 
 ## Overlays (none currently)
@@ -65,8 +67,8 @@ description: "IMPORTANT: Load when building or reviewing dialog UI, overlays, or
 |--------|------------------------|-----------------------------|
 | Dialog size | `large` (88) | `medium` (60) |
 | Root box | inlined (not `DialogShell`) | `DialogShell` |
-| Nav keys | arrows (analyze tab nav is arrow-only `← →`; scroll arrow-only `↑↓` + `PgUp`/`PgDn`) | `↑↓` + `j`/`k` aliases |
-| Footer | `← → {gran} · ↑↓ scroll · e export · h help` | `↑↓/jk navigate · enter select · esc close` |
+| Nav keys | arrows (analyze tab nav is arrow-only `← →`; scroll arrow-only `↑↓` + `PgUp`/`PgDn`) | arrows `↑↓` only (no `j`/`k` aliases) |
+| Footer | `← → {gran} · ↑↓ scroll · e export · h help` | `↑↓ navigate · enter select · esc close` |
 | Overlays | `HelpOverlay` + `ExportOverlay` | none (single-list dialog) |
 
 ## References

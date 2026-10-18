@@ -1,12 +1,22 @@
 /**
- * @deprecated OpenCode v1 server entrypoint — transition window only.
+ * OpenCode dual-generation server entrypoint (v1 + v2) — same-root compatible.
  *
- * OpenCode 2.x replaces `experimental.chat.system.transform` / `chat.message`
- * with the session context hook. This entrypoint exists so v1 users keep
- * working while they migrate; new work targets `persona-injector/index.ts`.
+ * The single default export is the official dual-generation shape
+ * `{ id, server, setup }`:
  *
- * v1 selection: auto-loaded from the config `plugins/` directory. Do NOT deploy
- * this file alongside the v2 plugin package (see README / `deploy` skill).
+ * - **OpenCode 1.19 (v1)** uses `server()` — the `experimental.chat.system.transform`
+ *   / `chat.message` hook map below.
+ * - **OpenCode 2.x (v2)** uses `id` + `setup()` and ignores the extra `server`
+ *   property (the official v2 schema strips unknown keys). The v2 setup lives in
+ *   `persona-injector/server-setup.ts` (a non-entrypoint helper, so the package
+ *   directory never resolves a second server plugin).
+ *
+ * This lets a single flat `plugins/persona-injector-server.ts` auto-discovered by
+ * BOTH generations share one normal config root (`~/.config/opencode/plugins/`).
+ *
+ * The v2 setup is imported as a value but its `@opencode/plugin` `Context` type is
+ * imported **type-only** (erased), so v1 — where `@opencode/plugin` is not
+ * installed — evaluates no v2 host runtime import.
  */
 import { readConfig, PERSONAS_DIR } from "./persona-injector/config"
 import { loadPersonas, resolvePersonaPrompt } from "./persona-injector/personas"
@@ -16,6 +26,7 @@ import { createLog } from "./persona-injector/wlib/src/core/log"
 import { writeSystemSnapshot, isTitleGenerator } from "./persona-injector/wlib/src/core/system"
 import { detectPrimaryAgent } from "./persona-injector/agent-detection"
 import { PERSONA_MARKER as MARKER } from "./persona-injector/injection"
+import { setup } from "./persona-injector/server-setup"
 
 // Re-exported so the v1 module keeps its public surface (and the inject tests
 // keep importing `detectPrimaryAgent` from here). The implementation is shared
@@ -211,3 +222,12 @@ export const PersonaInjectorPlugin = async () => {
     },
   }
 }
+
+/**
+ * Official OpenCode dual-generation default export.
+ *
+ * - v1 (1.19): calls `server()` — `PersonaInjectorPlugin`'s hook map.
+ * - v2: decodes `{ id, setup }` from this object (the extra `server` key is
+ *   ignored/stripped by the v2 module schema) and registers the session hooks.
+ */
+export default { id: "persona-injector", server: PersonaInjectorPlugin, setup }

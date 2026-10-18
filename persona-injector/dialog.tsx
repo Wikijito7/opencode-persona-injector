@@ -138,9 +138,7 @@ export function openPersonaDialog(
       cleanupKeyLayer = registerDialogKeyLayer(host, {
         bindings: [
           { key: "up",      cmd: "persona.up",      desc: "Move up" },
-          { key: "k",       cmd: "persona.up",      desc: "Move up" },
           { key: "down",    cmd: "persona.down",    desc: "Move down" },
-          { key: "j",       cmd: "persona.down",    desc: "Move down" },
           { key: "enter",   cmd: "persona.select",  desc: "Select" },
           { key: "escape",  cmd: "persona.close",   desc: "Close" },
         ],
@@ -174,7 +172,7 @@ export function openPersonaDialog(
         fg={fg}
         muted={muted}
         scroll={scroll}
-        footer={<text fg={muted}>↑↓/jk navigate · enter select · esc close</text>}
+        footer={<text fg={muted}>↑↓ navigate · enter select · esc close</text>}
         desired={{ size: "medium", maxHeight: dialogMaxHeight }}
       >
         {loading() ? (

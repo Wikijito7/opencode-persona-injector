@@ -1,5 +1,10 @@
 /**
- * Persona Injector — OpenCode 2.x server entrypoint (PRODUCTION).
+ * Persona Injector — OpenCode 2.x server setup (PRODUCTION, non-entrypoint helper).
+ *
+ * This module is deliberately NOT an entrypoint name (`index.ts` / `server.ts`) so
+ * the v2 server scanner never resolves it as a second server plugin. The single
+ * v2 server entrypoint is the dual-generation default export in
+ * `../persona-injector-server.ts`, which reuses this `setup` function.
  *
  * OpenCode v2 (`@opencode/plugin`) replaces the v1 `experimental.chat.system.transform`
  * / `chat.message` hooks with a single **session context hook**. The context event
@@ -10,21 +15,22 @@
  * - `event.sessionID`
  * - `event.messages`, `event.model`, `event.tools`
  *
- * This module is a thin host adapter: it registers the pure, injectable
- * `injectPersona` pipeline (see `./injection`) on `context`, `compaction` and
- * `generate` — exactly the agent-loop request kinds. It deliberately does NOT
- * register the separate `title` hook, so title-generation calls never receive a
- * persona.
+ * The setup function registers the pure, injectable `injectPersona` pipeline (see
+ * `./injection`) on `context`, `compaction` and `generate` — exactly the agent-loop
+ * request kinds. It deliberately does NOT register the separate `title` hook, so
+ * title-generation calls never receive a persona.
  *
  * Request kinds are distinguished at registration: only the primary `context`
  * request is allowed to persist the shared system-snapshot sidecar that
  * `model-usage` reads; `compaction`/`generate` inject a persona but never
  * overwrite that snapshot with their auxiliary system prompts.
  *
- * Do NOT import a v1 host API here — the v1 entrypoint lives in
- * `persona-injector-server.ts` and uses the deprecated `createV1Host` adapter.
+ * Do NOT import `@opencode/plugin` at runtime here: this helper is imported by the
+ * v1 entrypoint (`../persona-injector-server.ts`) too, where the v2 host package is
+ * unavailable. The plugin `Context` type is imported **type-only** (erased), so the
+ * v1 wrapper evaluates no v2 runtime import.
  */
-import { Plugin } from "@opencode/plugin"
+import type { Plugin } from "@opencode/plugin"
 import { fileURLToPath } from "node:url"
 import { readConfig, PERSONAS_DIR } from "./config"
 import { loadPersonas, resolvePersonaPrompt } from "./personas"
@@ -70,32 +76,33 @@ export async function loadPersonaPrompts(
   return prompts
 }
 
-export default Plugin.define({
-  id: "persona-injector",
-  async setup(ctx) {
-    const deps = {
-      readConfig,
-      loadPrompts: loadPersonaPrompts,
-      writeSnapshot: writeSystemSnapshot,
-      log,
+/**
+ * OpenCode 2.x server setup. Consumed by the dual-generation default export in
+ * `../persona-injector-server.ts` (`{ id, server, setup }`); v2 uses `id + setup`.
+ */
+export async function setup(ctx: Plugin.Context): Promise<void> {
+  const deps = {
+    readConfig,
+    loadPrompts: loadPersonaPrompts,
+    writeSnapshot: writeSystemSnapshot,
+    log,
+  }
+
+  // The hook callback must return void; `injectPersona` returns a boolean for
+  // testability, so swallow it here.
+  //
+  // Only the primary agent-loop `context` request owns the shared sidecar
+  // snapshot that `model-usage` reads. `compaction`/`generate` still receive
+  // the persona, but must NOT overwrite that snapshot with their auxiliary
+  // system prompts.
+  const handlerFor = (persistSnapshot: boolean) =>
+    async (event: PersonaInjectionEvent): Promise<void> => {
+      await injectPersona(event, { ...deps, persistSnapshot })
     }
 
-    // The hook callback must return void; `injectPersona` returns a boolean for
-    // testability, so swallow it here.
-    //
-    // Only the primary agent-loop `context` request owns the shared sidecar
-    // snapshot that `model-usage` reads. `compaction`/`generate` still receive
-    // the persona, but must NOT overwrite that snapshot with their auxiliary
-    // system prompts.
-    const handlerFor = (persistSnapshot: boolean) =>
-      async (event: PersonaInjectionEvent): Promise<void> => {
-        await injectPersona(event, { ...deps, persistSnapshot })
-      }
-
-    // The agent loop + its compaction and generate variants share the context
-    // shape; title generation is a separate hook and is intentionally omitted.
-    await ctx.session.hook("context", handlerFor(true))
-    await ctx.session.hook("compaction", handlerFor(false))
-    await ctx.session.hook("generate", handlerFor(false))
-  },
-})
+  // The agent loop + its compaction and generate variants share the context
+  // shape; title generation is a separate hook and is intentionally omitted.
+  await ctx.session.hook("context", handlerFor(true))
+  await ctx.session.hook("compaction", handlerFor(false))
+  await ctx.session.hook("generate", handlerFor(false))
+}

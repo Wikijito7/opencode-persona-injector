@@ -43,7 +43,7 @@ bunx tsc --noEmit
 - The host-only deps (`@opentui/solid`, `@opencode/plugin`, `@opencode/plugin/tui`, `@opencode-ai/plugin/tui`) aren't resolvable in isolation, so tsc may report unrelated errors or fail to resolve.
 - If tsc isn't available or errors on host deps, note it as skipped — don't chase host-resolution noise.
 - If tsc runs clean, even better — report it.
-- Sanity-check the v2 entrypoints parse without a full typecheck: `bun build <file> --target=bun --external '*' --outfile=/tmp/x.js` for `persona-injector/index.ts`, `persona-injector/tui.tsx`, `persona-injector/dialog.tsx`.
+- Sanity-check the server/TUI entries parse without a full typecheck: `bun build <file> --target=bun --external '*' --outfile=/tmp/x.js` for `persona-injector-server.ts`, `persona-injector/server-setup.ts`, `persona-injector/tui.tsx`, `persona-injector/dialog.tsx`.
 
 ## Step 3 — Sanity (quick)
 
