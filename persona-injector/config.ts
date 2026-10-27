@@ -4,6 +4,14 @@ import type { PersonaInjectorConfig } from "./types"
 /** Persona used when migrating from the legacy jungle-mode config. */
 export const LEGACY_PERSONA_ID = "jungle-mode"
 
+/**
+ * Directory holding the persona pack JSON files, resolved once here so every
+ * entrypoint and the dialog share a single source of truth. The dialog shows
+ * this path to users in its empty state, so it must be the same directory the
+ * plugin actually loads from — never a separately hardcoded copy.
+ */
+export const PERSONAS_DIR = `${homedir()}/.config/opencode/personas`
+
 function configPath(): string {
   return `${homedir()}/.config/opencode/persona-injector.json`
 }
