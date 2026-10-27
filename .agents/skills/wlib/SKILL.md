@@ -68,7 +68,7 @@ openPersonaDialog(host, notify, …)
 - A v2 dialog **render callback re-runs** whenever a signal read directly in its body changes. A **long-lived controller whose factory registers rerender-sensitive state/effects** (effects, `onCleanup`, key layers, timeouts — e.g. the `opencode-model-usage` export controller) must not be constructed inline: each re-run replaces it and disposes the *old* instance's effects, so the overlay ends up bound to a fresh, closed object (the confirmed export-popup bug).
 - This is **not a blanket prohibition on lifecycle hooks in the render callback**. A component's own dialog-scoped `onMount`/`onCleanup` and its `registerDialogKeyLayer` are bound to the component and stay host-context-bound, so they *may* be built directly inside the callback — the persona `dialog.tsx` does exactly this with a per-dialog `createDialogOwnership` token (disposed on unmount) and no owned-instance. The owned-instance wrapper is for the long-lived, rerender-sensitive controller above.
 - For such a **long-lived, rerender-sensitive controller** (and only such a controller), wrap it in `createOwnedInstance` (wlib `ui/owned-instance.tsx`). Construct the wrapper wherever convenient (e.g. before `host.dialog.show`), then call its **lazy `.get()` inside** the render callback so the stable root is created at that call site and inherits the dialog's `Keymap.Provider` context. Later calls return the identical instance; `dispose()` — called from the dialog's `onClose` — tears it down exactly once (idempotent).
-- The contract is **lazy** (submodule pin `5cab3e142d910f9931fa6d9253f61ed35a554726`): the factory does **not** run at construction, but on the first `.get()`. `.get()` after `dispose()` throws; a `dispose()` before the first `.get()` never runs the factory.
+- The contract is **lazy** (submodule pin `a84759066ee6071f5c312d4cfcc543091f5141c3`): the factory does **not** run at construction, but on the first `.get()`. `.get()` after `dispose()` throws; a `dispose()` before the first `.get()` never runs the factory.
 
 ## Theme resolution (v2)
 
@@ -85,13 +85,15 @@ openPersonaDialog(host, notify, …)
 
 ## Submodule upkeep
 
-- Bump: `git -C persona-injector/wlib fetch origin && git -C persona-injector/wlib merge origin/v2` at repo root, then commit the pointer change. Do **not** use bare `git submodule update --remote`: `.gitmodules` sets no `branch`, so `--remote` follows the submodule's remote HEAD (`origin/main`) — never the v2 pin. The canonical v2 foundation pin is `opencode-wlib` commit `5cab3e142d910f9931fa6d9253f61ed35a554726` (Restrict export error result to a single Close action).
-- If the submodule working tree is dirty and the merge refuses:
+- Pin: `opencode-wlib` commit `a84759066ee6071f5c312d4cfcc543091f5141c3` — **Added OpenCode 2.0 host adapters (#6)** on `origin/main`, the commit that merged the v2 lineage into `main`. Its tree is **identical** to the previous v2 pin `ff473a1545dd4750e28c7ec008d3c6ed5d23802e` (Added success and warning semantic theme colors), so the merged main commit carries exactly the same v2 content — only the lineage changed (v2 branch → `main`).
+- Bump: at repo root, `git -C persona-injector/wlib fetch origin && git -C persona-injector/wlib checkout <exact-sha>`, then commit the pointer change. Always pin an explicit SHA and verify with `git -C persona-injector/wlib rev-parse HEAD`.
+- Do **not** use `git submodule update --remote` (bare or with `--remote`): `.gitmodules` sets no `branch`, so it follows the submodule's remote HEAD and can silently move the pin to whatever lands on `main` next. Never use `--remote` as a bump mechanism; it bypasses the explicit-SHA review step.
+- If the submodule working tree is dirty and the checkout refuses:
   1. **Inspect first:** `git -C persona-injector/wlib status` to see exactly what is modified/untracked.
-  2. **Preserve the work — never discard it:** commit it on the submodule branch, or `git -C persona-injector/wlib stash push -u -m wlib-pre-v2`.
-  3. **Recover to the parent gitlink:** `git submodule update --init --force persona-injector/wlib` (checks out the commit the parent repo pins).
-  4. **Advance only when clean:** `git -C persona-injector/wlib fetch origin && git -C persona-injector/wlib merge --ff-only origin/v2`, then restore any stash with `git -C persona-injector/wlib stash pop`.
-  Never run a destructive reset (`git reset --hard origin/main`, `origin/v2`, or bare) — this is a v2 submodule, `main` is not its foundation branch, and a reset discards local work and checks out the wrong lineage.
+  2. **Preserve the work — never discard it:** commit it on a submodule branch, or `git -C persona-injector/wlib stash push -u -m wlib-pre-pin`.
+  3. **Recover to the parent gitlink:** `git submodule update --init --force persona-injector/wlib` (checks out the exact commit the parent repo pins).
+  4. **Advance only when clean:** `git -C persona-injector/wlib fetch origin && git -C persona-injector/wlib checkout <exact-sha>`, then restore any stash with `git -C persona-injector/wlib stash pop`.
+  Never run a destructive reset (`git reset --hard`, `git reset --hard origin/main`, or any branch ref) — the submodule is pinned to a **detached exact SHA**, so a reset silently re-points it at a moving branch tip and can discard local work.
 - Keep the deployed copy in sync via the `deploy` skill — do NOT use raw `cp -r persona-injector/wlib …`; it ships test files and can clobber runtime artifacts.
 - wlib source lives in the `opencode-wlib` repo — never edit its files only inside the submodule; upstream changes there first.
 
